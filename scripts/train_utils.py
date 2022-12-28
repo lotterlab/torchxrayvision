@@ -3,6 +3,7 @@ import pickle
 import pprint
 import random
 from glob import glob
+import pdb
 from os.path import exists, join
 
 import numpy as np
@@ -11,6 +12,7 @@ import sklearn.metrics
 from sklearn.metrics import roc_auc_score, accuracy_score
 import sklearn, sklearn.model_selection
 import torchxrayvision as xrv
+import torch.nn.functional as F
 
 from tqdm import tqdm as tqdm_base
 def tqdm(*args, **kwargs):
@@ -23,7 +25,7 @@ def tqdm(*args, **kwargs):
 
 
 
-def train(model, dataset, cfg):
+def train(model, dataset, cfg, valid_dataset=None, use_softmax=False):
     print("Our config:")
     pprint.pprint(cfg)
         
@@ -51,11 +53,14 @@ def train(model, dataset, cfg):
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
-    # Dataset    
-    gss = sklearn.model_selection.GroupShuffleSplit(train_size=0.8,test_size=0.2, random_state=cfg.seed)
-    train_inds, test_inds = next(gss.split(X=range(len(dataset)), groups=dataset.csv.patientid))
-    train_dataset = xrv.datasets.SubsetDataset(dataset, train_inds)
-    valid_dataset = xrv.datasets.SubsetDataset(dataset, test_inds)
+    # Dataset
+    if valid_dataset is None:
+        gss = sklearn.model_selection.GroupShuffleSplit(train_size=0.8,test_size=0.2, random_state=cfg.seed)
+        train_inds, test_inds = next(gss.split(X=range(len(dataset)), groups=dataset.csv.patientid))
+        train_dataset = xrv.datasets.SubsetDataset(dataset, train_inds)
+        valid_dataset = xrv.datasets.SubsetDataset(dataset, test_inds)
+    else:
+        train_dataset = dataset
 
     # Dataloader
     train_loader = torch.utils.data.DataLoader(train_dataset,
@@ -73,8 +78,13 @@ def train(model, dataset, cfg):
     # Optimizer
     optim = torch.optim.Adam(model.parameters(), lr=cfg.lr, weight_decay=1e-5, amsgrad=True)
     print(optim)
+    if cfg.use_scheduler:
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optim, milestones=[20, 40], gamma=0.2)
 
-    criterion = torch.nn.BCEWithLogitsLoss()
+    if use_softmax:
+        criterion = 'softmax'
+    else:
+        criterion = torch.nn.BCEWithLogitsLoss()
 
     # Checkpointing
     start_epoch = 0
@@ -139,6 +149,9 @@ def train(model, dataset, cfg):
 
         torch.save(model, join(cfg.output_dir, f'{dataset_name}-e{epoch + 1}.pt'))
 
+        if cfg.use_scheduler:
+            scheduler.step()
+
     return metrics, best_metric, weights_for_best_validauc
 
 
@@ -169,20 +182,23 @@ def train_epoch(cfg, epoch, model, device, train_loader, optimizer, criterion, l
         targets = samples["lab"].to(device)
 
         outputs = model(images)
-        
+
         loss = torch.zeros(1).to(device).float()
-        for task in range(targets.shape[1]):
-            task_output = outputs[:,task]
-            task_target = targets[:,task]
-            mask = ~torch.isnan(task_target)
-            task_output = task_output[mask]
-            task_target = task_target[mask]
-            if len(task_target) > 0:
-                task_loss = criterion(task_output.float(), task_target.float())
-                if cfg.taskweights:
-                    loss += weights[task]*task_loss
-                else:
-                    loss += task_loss
+        if criterion == 'softmax':
+            loss = F.cross_entropy(outputs, targets)
+        else:
+            for task in range(targets.shape[1]):
+                task_output = outputs[:,task]
+                task_target = targets[:,task]
+                mask = ~torch.isnan(task_target)
+                task_output = task_output[mask]
+                task_target = task_target[mask]
+                if len(task_target) > 0:
+                    task_loss = criterion(task_output.float(), task_target.float())
+                    if cfg.taskweights:
+                        loss += weights[task]*task_loss
+                    else:
+                        loss += task_loss
         
         # here regularize the weight matrix when label_concat is used
         if cfg.label_concat_reg:
@@ -221,7 +237,8 @@ def valid_test_epoch(name, epoch, model, device, data_loader, criterion, limit=N
     avg_loss = []
     task_outputs={}
     task_targets={}
-    for task in range(data_loader.dataset[0]["lab"].shape[0]):
+    n_tasks = len(np.unique(data_loader.dataset.labels)) if criterion == 'softmax' else data_loader.dataset[0]["lab"].shape[0]
+    for task in range(n_tasks):
         task_outputs[task] = []
         task_targets[task] = []
         
@@ -237,19 +254,30 @@ def valid_test_epoch(name, epoch, model, device, data_loader, criterion, limit=N
             targets = samples["lab"].to(device)
 
             outputs = model(images)
+            if criterion == 'softmax':
+                outputs_softmax = F.softmax(outputs, dim=-1)
             
             loss = torch.zeros(1).to(device).double()
-            for task in range(targets.shape[1]):
-                task_output = outputs[:,task]
-                task_target = targets[:,task]
+            for task in range(n_tasks):
+
+                if criterion == 'softmax':
+                    task_target = targets == task
+                    task_output = outputs_softmax[:, task]
+                else:
+                    task_target = targets[:,task]
+                    task_output = outputs[:, task]
                 mask = ~torch.isnan(task_target)
                 task_output = task_output[mask]
                 task_target = task_target[mask]
-                if len(task_target) > 0:
-                    loss += criterion(task_output.double(), task_target.double())
+                if criterion != 'softmax':
+                    if len(task_target) > 0:
+                        loss += criterion(task_output.double(), task_target.double())
                 
                 task_outputs[task].append(task_output.detach().cpu().numpy())
                 task_targets[task].append(task_target.detach().cpu().numpy())
+
+            if criterion == 'softmax':
+                loss = F.cross_entropy(outputs, targets)
 
             loss = loss.sum()
             

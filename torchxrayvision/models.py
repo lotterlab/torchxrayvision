@@ -1,3 +1,5 @@
+import pdb
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -150,8 +152,8 @@ class DenseNet(nn.Module):
         self.apply_sigmoid = apply_sigmoid
         self.weights = weights
 
-        if self.weights is not None:
-            if not self.weights in model_urls.keys():
+        if self.weights is not None and self.weights != 'imagenet':
+            if self.weights not in model_urls.keys():
                 possible_weights = [k for k in model_urls.keys() if k.startswith("densenet")]
                 raise Exception("Weights value must be in {}".format(possible_weights))
 
@@ -203,27 +205,34 @@ class DenseNet(nn.Module):
         # needs to be register_buffer here so it will go to cuda/cpu easily
         self.register_buffer('op_threshs', op_threshs)
 
-        if self.weights != None:
-            self.weights_filename_local = get_weights(weights)
+        if self.weights is not None:
+            if self.weights == 'imagenet':
+                orig_model = torchvision.models.densenet121(pretrained=True)
+                feat_state_dict = orig_model.features.state_dict()
+                new_conv_weights = feat_state_dict['conv0.weight'].mean(axis=1, keepdim=True)
+                feat_state_dict['conv0.weight'] = new_conv_weights
+                self.features.load_state_dict(feat_state_dict)
+            else:
+                self.weights_filename_local = get_weights(weights)
 
-            try:
-                savedmodel = torch.load(self.weights_filename_local, map_location='cpu')
-                # patch to load old models https://github.com/pytorch/pytorch/issues/42242
-                for mod in savedmodel.modules():
-                    if not hasattr(mod, "_non_persistent_buffers_set"):
-                        mod._non_persistent_buffers_set = set()
+                try:
+                    savedmodel = torch.load(self.weights_filename_local, map_location='cpu')
+                    # patch to load old models https://github.com/pytorch/pytorch/issues/42242
+                    for mod in savedmodel.modules():
+                        if not hasattr(mod, "_non_persistent_buffers_set"):
+                            mod._non_persistent_buffers_set = set()
 
-                self.load_state_dict(savedmodel.state_dict())
-            except Exception as e:
-                print("Loading failure. Check weights file:", self.weights_filename_local)
-                raise e
+                    self.load_state_dict(savedmodel.state_dict())
+                except Exception as e:
+                    print("Loading failure. Check weights file:", self.weights_filename_local)
+                    raise e
 
-            self.eval()
+                self.eval()
 
-            if "op_threshs" in model_urls[weights]:
-                self.op_threshs = torch.tensor(model_urls[weights]["op_threshs"])
+                if "op_threshs" in model_urls[weights]:
+                    self.op_threshs = torch.tensor(model_urls[weights]["op_threshs"])
 
-            self.upsample = nn.Upsample(size=(224, 224), mode='bilinear', align_corners=False)
+                self.upsample = nn.Upsample(size=(224, 224), mode='bilinear', align_corners=False)
 
     def __repr__(self):
         if self.weights is not None:

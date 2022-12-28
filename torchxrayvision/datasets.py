@@ -7,6 +7,7 @@ import sys
 import tarfile
 import warnings
 import zipfile
+import pdb
 
 import imageio
 import numpy as np
@@ -65,6 +66,57 @@ def normalize(img, maxval, reshape=False):
         img = img[None, :, :]
 
     return img
+
+
+def apply_random_window_width(img, min_width, max_width=256):
+    width = np.random.randint(min_width, max_width + 1)
+    img = apply_window(img, 256. / 2, width, y_min=0, y_max=255)
+    return img
+
+
+def apply_window(arr, center, width, y_min=0, y_max=255):
+    y_range = y_max - y_min
+    arr = arr.astype('float64')
+    width = float(width)
+
+    below = arr <= (center - width / 2)
+    above = arr > (center + width / 2)
+    between = np.logical_and(~below, ~above)
+
+    arr[below] = y_min
+    arr[above] = y_max
+    if between.any():
+        arr[between] = (
+                ((arr[between] - center) / width + 0.5) * y_range + y_min
+        )
+
+    return arr
+
+
+# def apply_random_zoom(img, max_resize, min_resize=224):
+#     orig_size = img.shape[-1]
+#     zoom_size = np.random.randint(min_resize, max_resize + 1)
+#
+#     diff = int((zoom_size - orig_size) / 2)
+#     img = img[:, diff:diff+orig_size, diff:diff+orig_size]
+#     img = skimage.transform.resize(img, (1, self.size, self.size), mode='constant', preserve_range=True).astype(np.float32)
+
+
+class RandomZoom(object):
+    def __init__(self, max_resize, final_size=224):
+        self.max_resize = max_resize
+        self.final_size = final_size
+
+    def __call__(self, img):
+        zoom_size = np.random.randint(self.final_size, self.max_resize + 1)
+        img = skimage.transform.resize(img, (1, zoom_size, zoom_size), mode='constant', preserve_range=True).astype(
+            np.float32)
+
+        if img.shape[-1] != self.final_size:
+            diff = int((img.shape[-1] - self.final_size) / 2)
+            img = img[:, diff:diff + self.final_size, diff:diff + self.final_size]
+
+        return img
 
 
 def apply_transforms(sample, transform, seed=None) -> Dict:
@@ -850,7 +902,11 @@ class CheX_Dataset(Dataset):
                  data_aug=None,
                  flat_dir=True,
                  seed=0,
-                 unique_patients=True
+                 unique_patients=True,
+                 min_window_width=None,
+                 labels_to_use=None,
+                 use_class_balancing=False,
+                 use_no_finding=False
                  ):
 
         super(CheX_Dataset, self).__init__()
@@ -870,6 +926,9 @@ class CheX_Dataset(Dataset):
                             "Fracture",
                             "Support Devices"]
 
+        if use_no_finding:
+            self.pathologies.append("No Finding")
+
         self.pathologies = sorted(self.pathologies)
 
         self.imgpath = imgpath
@@ -878,32 +937,62 @@ class CheX_Dataset(Dataset):
         self.csvpath = csvpath
         self.csv = pd.read_csv(self.csvpath)
         self.views = views
+        self.min_window_width = min_window_width
+        self.use_class_balancing = use_class_balancing
+        print('class balancing', use_class_balancing)
 
         self.csv["view"] = self.csv["Frontal/Lateral"]  # Assign view column
         self.csv.loc[(self.csv["view"] == "Frontal"), "view"] = self.csv["AP/PA"]  # If Frontal change with the corresponding value in the AP/PA column otherwise remains Lateral
         self.csv["view"] = self.csv["view"].replace({'Lateral': "L"})  # Rename Lateral with L
 
-        self.limit_to_selected_views(views)
+        if views != 'all':
+            print('limiting to views {}'.format(views))
+            self.limit_to_selected_views(views)
 
         if unique_patients:
             self.csv["PatientID"] = self.csv["Path"].str.extract(pat=r'(patient\d+)')
             self.csv = self.csv.groupby("PatientID").first().reset_index()
 
-        # Get our classes.
-        healthy = self.csv["No Finding"] == 1
-        self.labels = []
-        for pathology in self.pathologies:
-            if pathology in self.csv.columns:
-                if pathology != "Support Devices":
+        if labels_to_use:
+            label_col = labels_to_use[0]
+            label_classes = labels_to_use[1:]
+
+            # only keep entries that are in the labels
+            idx = self.csv[label_col].isin(label_classes)
+            self.csv = self.csv[idx].copy()
+
+            label_map = {}
+            for label_i, label_name in enumerate(label_classes):
+                label_map[label_name] = label_i
+            self.labels = self.csv[label_col].map(label_map).values
+            self.idxs_per_label = {}
+            for label_i in range(len(label_classes)):
+                self.idxs_per_label[label_i] = np.where(self.labels == label_i)[0]
+
+            # if not self.use_class_balancing:
+            #     print('Are you sure you dont want to use class balancing??')
+        else:
+            # Get our classes.
+            healthy = self.csv["No Finding"] == 1
+            self.labels = []
+            for pathology in self.pathologies:
+                assert pathology in self.csv.columns
+                if pathology == "No Finding":
+                    for idx, row in self.csv.iterrows():
+                        if row['No Finding'] != row['No Finding']: # only reassign if nan
+                            if (row[6:18] == 1).sum():
+                                self.csv.loc[idx, 'No Finding'] = 0
+                elif pathology != "Support Devices":
                     self.csv.loc[healthy, pathology] = 0
+
                 mask = self.csv[pathology]
 
-            self.labels.append(mask.values)
-        self.labels = np.asarray(self.labels).T
-        self.labels = self.labels.astype(np.float32)
+                self.labels.append(mask.values)
+            self.labels = np.asarray(self.labels).T
+            self.labels = self.labels.astype(np.float32)
 
-        # Make all the -1 values into nans to keep things simple
-        self.labels[self.labels == -1] = np.nan
+            # Make all the -1 values into nans to keep things simple
+            self.labels[self.labels == -1] = np.nan
 
         # Rename pathologies
         self.pathologies = list(np.char.replace(self.pathologies, "Pleural Effusion", "Effusion"))
@@ -913,7 +1002,7 @@ class CheX_Dataset(Dataset):
         # offset_day_int
 
         # patientid
-        if 'train' in csvpath:
+        if 'train' in csvpath or ('train' in self.csv.Path.iloc[0]):
             patientid = self.csv.Path.str.split("train/", expand=True)[1]
         elif 'valid' in csvpath:
             patientid = self.csv.Path.str.split("valid/", expand=True)[1]
@@ -934,6 +1023,8 @@ class CheX_Dataset(Dataset):
         self.csv['sex_male'] = self.csv['Sex'] == 'Male'
         self.csv['sex_female'] = self.csv['Sex'] == 'Female'
 
+
+
     def string(self):
         return self.__class__.__name__ + " num_samples={} views={} data_aug={}".format(len(self), self.views, self.data_aug)
 
@@ -941,6 +1032,10 @@ class CheX_Dataset(Dataset):
         return len(self.labels)
 
     def __getitem__(self, idx):
+        if self.use_class_balancing: # hack to sample idx again
+            idx = np.random.randint(len(self.idxs_per_label))
+            idx = np.random.choice(self.idxs_per_label[idx])
+
         sample = {}
         sample["idx"] = idx
         sample["lab"] = self.labels[idx]
@@ -949,6 +1044,10 @@ class CheX_Dataset(Dataset):
         imgid = imgid.replace("CheXpert-v1.0-small/", "")
         img_path = os.path.join(self.imgpath, imgid)
         img = imread(img_path)
+
+        # apply windowing
+        if self.min_window_width:
+            img = apply_random_window_width(img, self.min_window_width, max_width=256)
 
         sample["img"] = normalize(img, maxval=255, reshape=True)
 
@@ -980,7 +1079,12 @@ class MIMIC_Dataset(Dataset):
                  data_aug=None,
                  flat_dir=True,
                  seed=0,
-                 unique_patients=True
+                 unique_patients=True,
+                 min_window_width=None,
+                 labels_to_use=None,
+                 use_class_balancing=False,
+                 filter_good_images=True,
+                 use_no_finding=False
                  ):
 
         super(MIMIC_Dataset, self).__init__()
@@ -1000,6 +1104,9 @@ class MIMIC_Dataset(Dataset):
                             "Fracture",
                             "Support Devices"]
 
+        if use_no_finding:
+            self.pathologies.append("No Finding")
+
         self.pathologies = sorted(self.pathologies)
 
         self.imgpath = imgpath
@@ -1009,33 +1116,70 @@ class MIMIC_Dataset(Dataset):
         self.csv = pd.read_csv(self.csvpath)
         self.metacsvpath = metacsvpath
         self.metacsv = pd.read_csv(self.metacsvpath)
+        self.views = views
+        self.min_window_width = min_window_width
+        self.use_class_balancing = use_class_balancing
+        print('class balancing', use_class_balancing)
 
         self.csv = self.csv.set_index(['subject_id', 'study_id'])
         self.metacsv = self.metacsv.set_index(['subject_id', 'study_id'])
 
         self.csv = self.csv.join(self.metacsv).reset_index()
 
-        # Keep only the desired view
-        self.csv["view"] = self.csv["ViewPosition"]
-        self.limit_to_selected_views(views)
+        if filter_good_images:
+            # these are the files that aren't corrupt
+            good_dicoms = np.load('/lotterlab/datasets/mimic-cxr-jpg-chest-radiographs-with-structured-labels-2.0.0/good_image_dicoms.npy')
+            orig_len = len(self.csv)
+            self.csv = self.csv[self.csv.dicom_id.isin(good_dicoms)].copy()
+            print('filtered good images, old size {}, new size {}'.format(orig_len, len(self.csv)))
+
+        if views != 'all':
+            print('limiting to views {}'.format(views))
+            # Keep only the desired view
+            self.csv["view"] = self.csv["ViewPosition"]
+            self.limit_to_selected_views(views)
 
         if unique_patients:
             self.csv = self.csv.groupby("subject_id").first().reset_index()
 
-        # Get our classes.
-        healthy = self.csv["No Finding"] == 1
-        self.labels = []
-        for pathology in self.pathologies:
-            if pathology in self.csv.columns:
-                self.csv.loc[healthy, pathology] = 0
+        if labels_to_use:
+            label_col = labels_to_use[0]
+            label_classes = labels_to_use[1:]
+
+            # only keep entries that are in the labels
+            idx = self.csv[label_col].isin(label_classes)
+            self.csv = self.csv[idx].copy()
+
+            label_map = {}
+            for label_i, label_name in enumerate(label_classes):
+                label_map[label_name] = label_i
+            self.labels = self.csv[label_col].map(label_map).values
+            self.idxs_per_label = {}
+            for label_i in range(len(label_classes)):
+                self.idxs_per_label[label_i] = np.where(self.labels == label_i)[0]
+        else:
+            # Get our classes.
+            healthy = self.csv["No Finding"] == 1
+            self.labels = []
+            findings_cols = [j for j in range(2, 15) if j != 10]
+            for pathology in self.pathologies:
+                assert pathology in self.csv.columns
+                if pathology == "No Finding":
+                    for idx, row in self.csv.iterrows():
+                        if row['No Finding'] != row['No Finding']:  # only reassign if nan
+                            if (row[findings_cols] == 1).sum():
+                                self.csv.loc[idx, 'No Finding'] = 0
+                elif pathology != "Support Devices":
+                    self.csv.loc[healthy, pathology] = 0
+
                 mask = self.csv[pathology]
 
-            self.labels.append(mask.values)
-        self.labels = np.asarray(self.labels).T
-        self.labels = self.labels.astype(np.float32)
+                self.labels.append(mask.values)
+            self.labels = np.asarray(self.labels).T
+            self.labels = self.labels.astype(np.float32)
 
-        # Make all the -1 values into nans to keep things simple
-        self.labels[self.labels == -1] = np.nan
+            # Make all the -1 values into nans to keep things simple
+            self.labels[self.labels == -1] = np.nan
 
         # Rename pathologies
         self.pathologies = np.char.replace(self.pathologies, "Pleural Effusion", "Effusion")
@@ -1055,6 +1199,10 @@ class MIMIC_Dataset(Dataset):
         return len(self.labels)
 
     def __getitem__(self, idx):
+        if self.use_class_balancing: # hack to sample idx again
+            idx = np.random.randint(len(self.idxs_per_label))
+            idx = np.random.choice(self.idxs_per_label[idx])
+
         sample = {}
         sample["idx"] = idx
         sample["lab"] = self.labels[idx]
@@ -1063,8 +1211,33 @@ class MIMIC_Dataset(Dataset):
         studyid = str(self.csv.iloc[idx]["study_id"])
         dicom_id = str(self.csv.iloc[idx]["dicom_id"])
 
-        img_path = os.path.join(self.imgpath, "p" + subjectid[:2], "p" + subjectid, "s" + studyid, dicom_id + ".jpg")
+        #img_path = os.path.join(self.imgpath, "p" + subjectid[:2], "p" + subjectid, "s" + studyid, dicom_id + ".jpg")
+        img_path = os.path.join(self.imgpath, "p" + subjectid[:2], "p" + subjectid, "s" + studyid, dicom_id + ".png")
         img = imread(img_path)
+        # try:
+        #     img = imread(img_path)
+        # except:
+        #     # just get a random idx
+        #     img = None
+        #     while img is None:
+        #         idx = np.random.randint(len(self.csv))
+        #         subjectid = str(self.csv.iloc[idx]["subject_id"])
+        #         studyid = str(self.csv.iloc[idx]["study_id"])
+        #         dicom_id = str(self.csv.iloc[idx]["dicom_id"])
+        #         img_path = os.path.join(self.imgpath, "p" + subjectid[:2], "p" + subjectid, "s" + studyid,
+        #                                 dicom_id + ".jpg")
+        #         try:
+        #             img = imread(img_path)
+        #         except:
+        #             img = None
+        #
+        #     sample["idx"] = idx
+        #     sample["lab"] = self.labels[idx]
+
+
+        # apply windowing
+        if self.min_window_width:
+            img = apply_random_window_width(img, self.min_window_width, max_width=256)
 
         sample["img"] = normalize(img, maxval=255, reshape=True)
 
@@ -1840,8 +2013,8 @@ class XRayResizer(object):
     def __init__(self, size, engine="skimage"):
         self.size = size
         self.engine = engine
-        if 'cv2' in sys.modules:
-            print("Setting XRayResizer engine to cv2 could increase performance.")
+        # if 'cv2' in sys.modules:
+        #     print("Setting XRayResizer engine to cv2 could increase performance.")
 
     def __call__(self, img):
         if self.engine == "skimage":
