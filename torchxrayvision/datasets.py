@@ -8,6 +8,7 @@ import tarfile
 import warnings
 import zipfile
 import pdb
+import itertools
 
 import imageio
 import numpy as np
@@ -176,6 +177,82 @@ def relabel_dataset(pathologies, dataset, silent=False):
 
     dataset.labels = new_labels
     dataset.pathologies = pathologies
+
+
+def calculate_multifactorial_sample_idxs(class_values_df, class_balancing_proportions):
+    possible_keys = []
+    idxs_per_factor_vals = {}
+    for factor_num, tup in enumerate(class_balancing_proportions):
+        factor = tup[0]
+        specs = tup[1]
+        if factor == 'pathology':
+            possible_paths = specs.keys()
+            possible_vals = []
+            for this_path in possible_paths:
+                for v in ['0', '1']:
+                    possible_vals.append(this_path + ' -- ' + v)
+        else:
+            if isinstance(specs, list):
+                possible_vals = specs
+            else: # dict
+                possible_vals = list(specs.keys())
+        possible_keys.append(possible_vals)
+
+        idxs_per_factor_vals[factor_num] = {}
+        if factor == 'pathology':
+            for v in possible_vals:
+                path_vals = v.split(' -- ')  # e.g 'No Finding -- 0'
+                pathology = path_vals[0]
+                path_label = int(path_vals[1])
+                idxs_per_factor_vals[factor_num][v] = class_values_df[pathology] == path_label
+        else:
+            for v in possible_vals:
+                idxs_per_factor_vals[factor_num][v] = class_values_df[factor] == v
+
+    all_sample_keys = list(itertools.product(*possible_keys))
+    print('number of sample combinations:', len(all_sample_keys))
+
+    idxs_per_sample_key = {}
+    counts_per_sample_key = {}
+    for sample_key in all_sample_keys:
+        for factor_num, factor_val in enumerate(sample_key):
+            this_idx = idxs_per_factor_vals[factor_num][factor_val]
+            if factor_num == 0:
+                sample_idx = this_idx
+            else:
+                sample_idx = sample_idx & this_idx
+        idxs_per_sample_key[sample_key] = np.where(sample_idx.values)[0].tolist()
+        counts_per_sample_key[sample_key] = len(idxs_per_sample_key[sample_key])
+        if not counts_per_sample_key[sample_key]:
+            print('no examples for', sample_key)
+
+    return idxs_per_sample_key
+
+
+def sample_idx_multifactorial(class_balancing_proportions, idxs_per_sample_key):
+    idx = None
+    while idx is None:
+        sample_key = []
+        for factor_num, tup in enumerate(class_balancing_proportions):
+            # tup looks like (factor, dict or list)
+            factor = tup[0]
+            specs = tup[1]
+            if factor == 'pathology':
+                sampled_path = np.random.choice(list(specs.keys()))  # nested dict
+                path_label = np.random.choice(list(specs[sampled_path].keys()),
+                                              p=list(specs[sampled_path].values()))
+                factor_val = f'{sampled_path} -- {path_label}'
+            else:
+                if isinstance(specs, list):
+                    factor_val = np.random.choice(specs)
+                else:
+                    factor_val = np.random.choice(list(specs.keys()), p=list(specs.values()))
+            sample_key.append(factor_val)
+
+        sample_key = tuple(sample_key)
+        if len(idxs_per_sample_key[sample_key]):
+            idx = np.random.choice(idxs_per_sample_key[sample_key])
+    return idx
 
 
 class Dataset():
@@ -906,7 +983,9 @@ class CheX_Dataset(Dataset):
                  min_window_width=None,
                  labels_to_use=None,
                  use_class_balancing=False,
-                 use_no_finding=False
+                 use_no_finding=False,
+                 class_balancing_proportions=None,
+                 class_balancing_labels_df=None
                  ):
 
         super(CheX_Dataset, self).__init__()
@@ -939,6 +1018,7 @@ class CheX_Dataset(Dataset):
         self.views = views
         self.min_window_width = min_window_width
         self.use_class_balancing = use_class_balancing
+        self.class_balancing_proportions = class_balancing_proportions
         print('class balancing', use_class_balancing)
 
         self.csv["view"] = self.csv["Frontal/Lateral"]  # Assign view column
@@ -1023,7 +1103,9 @@ class CheX_Dataset(Dataset):
         self.csv['sex_male'] = self.csv['Sex'] == 'Male'
         self.csv['sex_female'] = self.csv['Sex'] == 'Female'
 
-
+        if self.use_class_balancing == 'multifactorial':
+            filt_labels_df = class_balancing_labels_df.loc[self.csv.Path]
+            self.idxs_per_sample_key = calculate_multifactorial_sample_idxs(filt_labels_df, self.class_balancing_proportions)
 
     def string(self):
         return self.__class__.__name__ + " num_samples={} views={} data_aug={}".format(len(self), self.views, self.data_aug)
@@ -1033,8 +1115,11 @@ class CheX_Dataset(Dataset):
 
     def __getitem__(self, idx):
         if self.use_class_balancing: # hack to sample idx again
-            idx = np.random.randint(len(self.idxs_per_label))
-            idx = np.random.choice(self.idxs_per_label[idx])
+            if self.use_class_balancing == 'multifactorial':
+                idx = sample_idx_multifactorial(self.class_balancing_proportions, self.idxs_per_sample_key)
+            else:
+                idx = np.random.randint(len(self.idxs_per_label))
+                idx = np.random.choice(self.idxs_per_label[idx])
 
         sample = {}
         sample["idx"] = idx
@@ -1084,7 +1169,9 @@ class MIMIC_Dataset(Dataset):
                  labels_to_use=None,
                  use_class_balancing=False,
                  filter_good_images=True,
-                 use_no_finding=False
+                 use_no_finding=False,
+                 class_balancing_proportions=None,
+                 class_balancing_labels_df=None
                  ):
 
         super(MIMIC_Dataset, self).__init__()
@@ -1119,6 +1206,7 @@ class MIMIC_Dataset(Dataset):
         self.views = views
         self.min_window_width = min_window_width
         self.use_class_balancing = use_class_balancing
+        self.class_balancing_proportions = class_balancing_proportions
         print('class balancing', use_class_balancing)
 
         self.csv = self.csv.set_index(['subject_id', 'study_id'])
@@ -1192,6 +1280,10 @@ class MIMIC_Dataset(Dataset):
         # patientid
         self.csv["patientid"] = self.csv["subject_id"].astype(str)
 
+        if self.use_class_balancing == 'multifactorial':
+            filt_labels_df = class_balancing_labels_df.loc[self.csv.dicom_id]
+            self.idxs_per_sample_key = calculate_multifactorial_sample_idxs(filt_labels_df, self.class_balancing_proportions)
+
     def string(self):
         return self.__class__.__name__ + " num_samples={} views={} data_aug={}".format(len(self), self.views, self.data_aug)
 
@@ -1200,8 +1292,11 @@ class MIMIC_Dataset(Dataset):
 
     def __getitem__(self, idx):
         if self.use_class_balancing: # hack to sample idx again
-            idx = np.random.randint(len(self.idxs_per_label))
-            idx = np.random.choice(self.idxs_per_label[idx])
+            if self.use_class_balancing == 'multifactorial':
+                idx = sample_idx_multifactorial(self.class_balancing_proportions, self.idxs_per_sample_key)
+            else:
+                idx = np.random.randint(len(self.idxs_per_label))
+                idx = np.random.choice(self.idxs_per_label[idx])
 
         sample = {}
         sample["idx"] = idx

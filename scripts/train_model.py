@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
 import argparse
+import pandas as pd
+import pickle
 
 import torch
 import torchvision, torchvision.transforms
@@ -57,6 +59,7 @@ parser.add_argument('--fixed_splits', action='store_true')
 parser.add_argument('--all_views', action='store_true')
 parser.add_argument('--use_scheduler', action='store_true')
 parser.add_argument('--class_balance', action='store_true')
+parser.add_argument('--multifactorial_class_balance', action='store_true')
 parser.add_argument('--imagenet_pretrained', action='store_true')
 parser.add_argument('--use_no_finding', default=False, action='store_true')
 
@@ -98,6 +101,45 @@ else:
     labels_to_use = None
 
 #use_class_balancing = not cfg.taskweights # if taskweights aren't use, do equal sampling
+if cfg.multifactorial_class_balance:
+    use_class_balancing = 'multifactorial'
+else:
+    use_class_balancing = cfg.class_balance
+
+if use_class_balancing == 'multifactorial':
+    assert cfg.dataset in ['chex', 'mimic_ch']
+    data_tag = 'cxp' if cfg.dataset == 'chex' else 'mimic'
+    print('data_tag', data_tag)
+    class_balancing_labels_df = pd.read_csv(f'../data/{data_tag}_confounder_df.csv', index_col=0)
+    with open(f'../data/{data_tag}_confounder_proportions-ABW.pkl', 'rb') as f:
+        all_props = pickle.load(f)
+
+    class_balancing_props = []
+    #class_balancing_props.append(('Mapped_Race', ['Asian', 'Black', 'White']))
+    for confounder in ['Mapped_Race', 'Age_Bin', 'Sex']:
+        class_balancing_props.append((confounder, all_props[confounder]))
+
+    paths_to_use = ["Enlarged Cardiomediastinum",
+            "Cardiomegaly",
+            "Lung Opacity",
+            "Lung Lesion",
+            "Edema",
+            "Consolidation",
+            "Pneumonia",
+            "Atelectasis",
+            "Pneumothorax",
+            "Pleural Effusion",
+            "Pleural Other",
+            "Fracture",
+            "Support Devices",
+            'No Finding']
+    path_props = {}
+    for pathology in paths_to_use:
+        path_props[pathology] = all_props[pathology]
+    class_balancing_props.append(('pathology', path_props))
+else:
+    class_balancing_props = None
+    class_balancing_labels_df = None
 
 datas = []
 datas_names = []
@@ -127,8 +169,10 @@ if "chex" in cfg.dataset:
             csvpath=csvpath.replace('train', 'val'),
             transform=transforms_val, data_aug=data_aug, unique_patients=False,
             min_window_width=None, views=views,
-            labels_to_use=labels_to_use, use_class_balancing=cfg.class_balance,
-            use_no_finding=cfg.use_no_finding)
+            labels_to_use=labels_to_use, use_class_balancing=use_class_balancing,
+            use_no_finding=cfg.use_no_finding,
+            class_balancing_labels_df=class_balancing_labels_df,
+            class_balancing_proportions=class_balancing_props)
     else:
         csvpath = cfg.dataset_dir + "/CheXpert-v1.0-small/train.csv"
         valid_dataset = None
@@ -138,8 +182,10 @@ if "chex" in cfg.dataset:
         csvpath=csvpath,
         transform=transforms, data_aug=data_aug, unique_patients=False,
         min_window_width=cfg.data_aug_window_width_min, views=views,
-        labels_to_use=labels_to_use, use_class_balancing=cfg.class_balance,
-        use_no_finding=cfg.use_no_finding)
+        labels_to_use=labels_to_use, use_class_balancing=use_class_balancing,
+        use_no_finding=cfg.use_no_finding,
+        class_balancing_labels_df=class_balancing_labels_df,
+        class_balancing_proportions=class_balancing_props)
 
     datas.append(dataset)
     datas_names.append("chex")
@@ -166,8 +212,10 @@ if "mimic_ch" in cfg.dataset:
             metacsvpath=metacsvpath.replace('train', 'val'),
             transform=transforms_val, data_aug=data_aug, unique_patients=False,
             min_window_width=None, views=views,
-            labels_to_use=labels_to_use, use_class_balancing=cfg.class_balance,
-            use_no_finding=cfg.use_no_finding)
+            labels_to_use=labels_to_use, use_class_balancing=use_class_balancing,
+            use_no_finding=cfg.use_no_finding,
+            class_balancing_labels_df=class_balancing_labels_df,
+            class_balancing_proportions=class_balancing_props)
     else:
         csvpath = None # not set up yet
         metacsvpath = None
@@ -179,8 +227,10 @@ if "mimic_ch" in cfg.dataset:
         metacsvpath=metacsvpath,
         transform=transforms, data_aug=data_aug, unique_patients=False,
         min_window_width=cfg.data_aug_window_width_min, views=views,
-        labels_to_use=labels_to_use, use_class_balancing=cfg.class_balance,
-        use_no_finding=cfg.use_no_finding)
+        labels_to_use=labels_to_use, use_class_balancing=use_class_balancing,
+        use_no_finding=cfg.use_no_finding,
+        class_balancing_labels_df=class_balancing_labels_df,
+        class_balancing_proportions=class_balancing_props)
 
     datas.append(dataset)
     datas_names.append("mimic_ch")
