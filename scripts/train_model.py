@@ -22,7 +22,7 @@ import random
 import train_utils
 import torchxrayvision as xrv
 
-
+# arguments
 parser = argparse.ArgumentParser()
 # parser.add_argument('-f', type=str, default="", help='')
 parser.add_argument('--name', type=str)

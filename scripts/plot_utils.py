@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import pickle as pkl
 
-
+#run_name = 'cxp_densenet_pretrained'
 def create_training_curves(run_name):
     run_output_path = '../outputs/{}/'.format(run_name)
     metrics_path = run_output_path + '{}-densenet-{}-metrics.pkl'.format('chex' if 'cxp' in run_name else 'mimic_ch', run_name)
@@ -32,4 +32,4 @@ def create_training_curves(run_name):
 
 
 if __name__ == '__main__':
-    create_training_curves('mimic_aug-w205-rz269_densenet_allviews_path_pretrained_wnofinding')
+    create_training_curves('mimic_densenet_pretrained_v2')
