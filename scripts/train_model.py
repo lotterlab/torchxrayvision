@@ -94,6 +94,8 @@ if 'race' in cfg.label_type:
         labels_to_use += ['Black', 'White']
     else:
         labels_to_use += ['Asian', 'Black', 'White']
+elif cfg.label_type == 'higher_score':
+    labels_to_use = ['Higher_Score', 'CXP', 'MMC']
 else:
     labels_to_use = None
 
@@ -120,11 +122,18 @@ if "chex" in cfg.dataset:
         views = ['PA', 'AP']
     print('views', views)
     if cfg.fixed_splits:
-        csvpath = '/lotterlab/lotterb/project_data/bias_interpretability/cxp_cv_splits/version_0/train.csv'
+        if cfg.label_type == 'higher_score':
+            # need to create a new dataframe that's like the train.csv below but for val.csv and test.csv with a column appended named "Higher_Score"
+            # that has a value of either "CXP" or "MMC". Save this dataframe somewhere in your own personal folder and add path below
+            csvpath = 'TODO'
+            val_csvpath = csvpath.replace('test', 'val')
+        else:
+            csvpath = '/lotterlab/lotterb/project_data/bias_interpretability/cxp_cv_splits/version_0/train.csv'
+            val_csvpath = csvpath.replace('train', 'val')
 
         valid_dataset = xrv.datasets.CheX_Dataset(
             imgpath=cfg.dataset_dir + "/CheXpert-v1.0-small",
-            csvpath=csvpath.replace('train', 'val'),
+            csvpath=val_csvpath,
             transform=transforms_val, data_aug=data_aug, unique_patients=False,
             min_window_width=None, views=views,
             labels_to_use=labels_to_use, use_class_balancing=cfg.class_balance,
@@ -157,13 +166,23 @@ if "mimic_ch" in cfg.dataset:
         views = ['PA', 'AP']
     print('views', views)
     if cfg.fixed_splits:
-        csvpath = '/lotterlab/lotterb/project_data/bias_interpretability/mimic_cv_splits/version_0/cxp-labels_train.csv'
-        metacsvpath = csvpath.replace('cxp-labels', 'meta')
+        csvpath = '/lotterlab/lotterb/project_data/bias_interpretability/mimic_cv_splits/version_0/cxp-labels_train.csv' # this will stay the same
+        if cfg.label_type == 'higher_score':
+            # need to create a new dataframe that's like the meta_train.csv below but for meta_val.csv and meta_test.csv with a column appended named "Higher_Score"
+            # that has a value of either "CXP" or "MMC". Save this dataframe somewhere in your own personal folder and add path below
+            metacsvpath = 'TODO'
+            csvpath = csvpath.replace('train', 'test')
+            val_csvpath = csvpath.replace('train', 'val')
+            val_metacsvpath = metacsvpath.replace('test', 'val')
+        else:
+            metacsvpath = csvpath.replace('cxp-labels', 'meta')
+            val_csvpath = csvpath.replace('train', 'val')
+            val_metacsvpath = metacsvpath.replace('train', 'val')
 
         valid_dataset = xrv.datasets.MIMIC_Dataset(
             imgpath=imgpath,
-            csvpath=csvpath.replace('train', 'val'),
-            metacsvpath=metacsvpath.replace('train', 'val'),
+            csvpath=val_csvpath,
+            metacsvpath=val_metacsvpath,
             transform=transforms_val, data_aug=data_aug, unique_patients=False,
             min_window_width=None, views=views,
             labels_to_use=labels_to_use, use_class_balancing=cfg.class_balance,
