@@ -1121,10 +1121,12 @@ class MIMIC_Dataset(Dataset):
         self.use_class_balancing = use_class_balancing
         print('class balancing', use_class_balancing)
 
-        self.csv = self.csv.set_index(['subject_id', 'study_id'])
-        self.metacsv = self.metacsv.set_index(['subject_id', 'study_id'])
-
-        self.csv = self.csv.join(self.metacsv).reset_index()
+        if 'Higher_Score' in labels_to_use:
+            self.csv = self.metacsv
+        else:
+            self.csv = self.csv.set_index(['subject_id', 'study_id'])
+            self.metacsv = self.metacsv.set_index(['subject_id', 'study_id'])
+            self.csv = self.csv.join(self.metacsv).reset_index()
 
         if filter_good_images:
             # these are the files that aren't corrupt

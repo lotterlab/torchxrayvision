@@ -95,9 +95,10 @@ if 'race' in cfg.label_type:
     else:
         labels_to_use += ['Asian', 'Black', 'White']
 elif cfg.label_type == 'higher_score':
-    labels_to_use = ['Higher_Score', 'CXP', 'MMC']
+    labels_to_use = ['Higher_Score','CXP','MMC']
 else:
     labels_to_use = None
+
 
 #use_class_balancing = not cfg.taskweights # if taskweights aren't use, do equal sampling
 
@@ -125,7 +126,7 @@ if "chex" in cfg.dataset:
         if cfg.label_type == 'higher_score':
             # need to create a new dataframe that's like the train.csv below but for val.csv and test.csv with a column appended named "Higher_Score"
             # that has a value of either "CXP" or "MMC". Save this dataframe somewhere in your own personal folder and add path below
-            csvpath = 'TODO'
+            csvpath = '/lotterlab/users/jfernando/project_1/data/cxp_cv_splits/pneumothorax/test.csv'
             val_csvpath = csvpath.replace('test', 'val')
         else:
             csvpath = '/lotterlab/lotterb/project_data/bias_interpretability/cxp_cv_splits/version_0/train.csv'
@@ -170,7 +171,7 @@ if "mimic_ch" in cfg.dataset:
         if cfg.label_type == 'higher_score':
             # need to create a new dataframe that's like the meta_train.csv below but for meta_val.csv and meta_test.csv with a column appended named "Higher_Score"
             # that has a value of either "CXP" or "MMC". Save this dataframe somewhere in your own personal folder and add path below
-            metacsvpath = 'TODO'
+            metacsvpath = '/lotterlab/users/jfernando/project_1/data/mimic_cv_splits/pneumothorax/meta_test.csv'
             csvpath = csvpath.replace('train', 'test')
             val_csvpath = csvpath.replace('train', 'val')
             val_metacsvpath = metacsvpath.replace('test', 'val')
@@ -315,8 +316,8 @@ if "densenet" in cfg.model:
         weights = 'imagenet'
     else:
         weights = None
-    model = xrv.models.DenseNet(num_classes=n_classes, in_channels=1, weights=weights,
-                                **xrv.models.get_densenet_params(cfg.model)) 
+    model = xrv.models.DenseNet(num_classes=2, in_channels=1, weights=weights,
+                                **xrv.models.get_densenet_params(cfg.model))
 elif "resnet101" in cfg.model:
     model = torchvision.models.resnet101(num_classes=n_classes, pretrained=False)
     #patch for single channel
