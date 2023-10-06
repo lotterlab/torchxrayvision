@@ -54,6 +54,8 @@ parser.add_argument('--data_aug_max_resize', type=int, default=None, help='')
 parser.add_argument('--gpu', '-g', default='0', help='which gpu to use', required=True)
 parser.add_argument('--label_type', default='pathology')
 parser.add_argument('--fixed_splits', action='store_true')
+parser.add_argument('--fixed_splits_source', type=str, default=None, help='define file for fixed splits') # KVH: new to support training with different training splits
+parser.add_argument('--fixed_splits_mmc_score_source', type=str, default=None, help='define file for mmc score model meta data') # KVH: new to support score model training with different training splits (need to read in the meta file separately)
 parser.add_argument('--all_views', action='store_true')
 parser.add_argument('--use_scheduler', action='store_true')
 parser.add_argument('--class_balance', action='store_true')
@@ -65,7 +67,7 @@ cfg.output_dir = os.path.join(cfg.output_dir, cfg.name + '/')
 print(cfg)
 
 if not os.path.exists(cfg.output_dir):
-    os.mkdir(cfg.output_dir)
+    os.makedirs(cfg.output_dir)
 
 os.environ['CUDA_VISIBLE_DEVICES'] = cfg.gpu
 
@@ -123,11 +125,18 @@ if "chex" in cfg.dataset:
         views = ['PA', 'AP']
     print('views', views)
     if cfg.fixed_splits:
-        if cfg.label_type == 'higher_score':
+        if cfg.fixed_splits_source is not None: 
+            # if dataset source is provided read dataset from the specified path
+            print('reading fixed data splits from specified file')
+            csvpath = cfg.fixed_splits_source
+            val_csvpath = csvpath.replace('test', 'val') 
+        elif cfg.label_type == 'higher_score':
+            print('reading default fixed dataset splits')
             # need to create a new dataframe that's like the train.csv below but for val.csv and test.csv with a column appended named "Higher_Score"
             # that has a value of either "CXP" or "MMC". Save this dataframe somewhere in your own personal folder and add path below
             csvpath = '/lotterlab/users/jfernando/project_1/data/cxp_cv_splits/pneumothorax/test.csv'
-            val_csvpath = csvpath.replace('test', 'val')
+            # TODO: will need to update this later to accommodate differences in the nomenclature between the train datasplits
+            val_csvpath = csvpath.replace('test', 'val') 
         else:
             csvpath = '/lotterlab/lotterb/project_data/bias_interpretability/cxp_cv_splits/version_0/train.csv'
             val_csvpath = csvpath.replace('train', 'val')
@@ -167,11 +176,24 @@ if "mimic_ch" in cfg.dataset:
         views = ['PA', 'AP']
     print('views', views)
     if cfg.fixed_splits:
-        csvpath = '/lotterlab/lotterb/project_data/bias_interpretability/mimic_cv_splits/version_0/cxp-labels_train.csv' # this will stay the same
+        if cfg.fixed_splits_source is not None: 
+            print('reading fixed data splits from specified file')
+            csvpath = cfg.fixed_splits_source
+        else:
+            print('reading default fixed dataset splits')
+            csvpath = '/lotterlab/lotterb/project_data/bias_interpretability/mimic_cv_splits/version_0/cxp-labels_train.csv' # this will stay the same
+        
         if cfg.label_type == 'higher_score':
             # need to create a new dataframe that's like the meta_train.csv below but for meta_val.csv and meta_test.csv with a column appended named "Higher_Score"
             # that has a value of either "CXP" or "MMC". Save this dataframe somewhere in your own personal folder and add path below
-            metacsvpath = '/lotterlab/users/jfernando/project_1/data/mimic_cv_splits/pneumothorax/meta_test.csv'
+            # KVH: to support training with different training splits 
+            if cfg.fixed_splits_mmc_score_source is not None:
+                print('reading fixed data splits from specified file')
+                metacsvpath = cfg.fixed_splits_mmc_score_source
+            else:
+                print('reading default fixed dataset splits')
+                metacsvpath = '/lotterlab/users/jfernando/project_1/data/mimic_cv_splits/pneumothorax/meta_test.csv'
+            # TODO will need to update this later to accommodate differences in the nomenclature between the train datasplits
             csvpath = csvpath.replace('train', 'test')
             val_csvpath = csvpath.replace('train', 'val')
             val_metacsvpath = metacsvpath.replace('test', 'val')
@@ -180,6 +202,10 @@ if "mimic_ch" in cfg.dataset:
             val_csvpath = csvpath.replace('train', 'val')
             val_metacsvpath = metacsvpath.replace('train', 'val')
 
+        print(csvpath)
+        print(metacsvpath)
+        print(val_csvpath)
+        print(val_metacsvpath)
         valid_dataset = xrv.datasets.MIMIC_Dataset(
             imgpath=imgpath,
             csvpath=val_csvpath,
