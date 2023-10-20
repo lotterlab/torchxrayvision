@@ -129,13 +129,13 @@ if "chex" in cfg.dataset:
             # if dataset source is provided read dataset from the specified path
             print('reading fixed data splits from specified file')
             csvpath = cfg.fixed_splits_source
-            val_csvpath = csvpath.replace('test', 'val') 
+            train_dataset_split_name = csvpath.split('/')[-1][:-4]
+            val_csvpath = csvpath.replace(train_dataset_split_name, 'val') 
         elif cfg.label_type == 'higher_score':
             print('reading default fixed dataset splits')
             # need to create a new dataframe that's like the train.csv below but for val.csv and test.csv with a column appended named "Higher_Score"
             # that has a value of either "CXP" or "MMC". Save this dataframe somewhere in your own personal folder and add path below
             csvpath = '/lotterlab/users/jfernando/project_1/data/cxp_cv_splits/pneumothorax/test.csv'
-            # TODO: will need to update this later to accommodate differences in the nomenclature between the train datasplits
             val_csvpath = csvpath.replace('test', 'val') 
         else:
             csvpath = '/lotterlab/lotterb/project_data/bias_interpretability/cxp_cv_splits/version_0/train.csv'
@@ -193,10 +193,11 @@ if "mimic_ch" in cfg.dataset:
             else:
                 print('reading default fixed dataset splits')
                 metacsvpath = '/lotterlab/users/jfernando/project_1/data/mimic_cv_splits/pneumothorax/meta_test.csv'
-            # TODO will need to update this later to accommodate differences in the nomenclature between the train datasplits
-            csvpath = csvpath.replace('train', 'test')
-            val_csvpath = csvpath.replace('train', 'val')
-            val_metacsvpath = metacsvpath.replace('test', 'val')
+            train_dataset_split_name = csvpath.split('/')[-1][11:-4]
+            print(train_dataset_split_name)
+            # csvpath = csvpath.replace('train', 'test') # KVH: commented out
+            val_csvpath = csvpath.replace(train_dataset_split_name, 'val')
+            val_metacsvpath = metacsvpath.replace(train_dataset_split_name, 'val')
         else:
             metacsvpath = csvpath.replace('cxp-labels', 'meta')
             val_csvpath = csvpath.replace('train', 'val')
