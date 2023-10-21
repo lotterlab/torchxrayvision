@@ -1121,8 +1121,8 @@ class MIMIC_Dataset(Dataset):
         self.use_class_balancing = use_class_balancing
         print('class balancing', use_class_balancing)
 
-        if (labels_to_use is not None) & ('Higher_Score' in labels_to_use): # KVH: correct TypeError: argument of type 'NoneType' is not iterable
-            self.csv = self.metacsv
+        if (labels_to_use is not None):# KVH: correct TypeError: argument of type 'NoneType' is not iterable
+            if ('Higher_Score' in labels_to_use): self.csv = self.metacsv
         else:
             self.csv = self.csv.set_index(['subject_id', 'study_id'])
             self.metacsv = self.metacsv.set_index(['subject_id', 'study_id'])
