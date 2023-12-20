@@ -19,6 +19,8 @@ from skimage.io import imread
 import torch
 from torchvision import transforms
 
+import cv2 # KVH
+
 default_pathologies = [
     'Atelectasis',
     'Consolidation',
@@ -2044,6 +2046,62 @@ class XRayCenterCrop(object):
     def __call__(self, img):
         return self.crop_center(img)
 
+
+class HighPassFilter(object):
+    # added by KVH
+    def __init__(self, radius=2):
+        self.radius = radius
+    
+    def apply_high_pass_filter(self, img):
+        """
+        Apply a high pass filter to an image using OpenCV's Gaussian Blur.
+
+        Args:
+        image (numpy.array): The image to be processed.
+        radius (int): Radius for the Gaussian blur, which indirectly sets the cut-off frequency.
+
+        Returns:
+        numpy.array: The image after applying the high pass filter.
+        """
+        kernel_size = int(2 * self.radius + 1)
+        
+        # Apply Gaussian blur
+        blurred_image = cv2.GaussianBlur(img, (kernel_size, kernel_size), 0)
+
+        # Subtract the blurred image from the original image to get the high-pass filtered image
+        high_pass_filtered_image = cv2.subtract(img, blurred_image)
+
+        return high_pass_filtered_image
+    
+    def __call__(self, img):
+        return self.apply_high_pass_filter(img) 
+    
+class LowPassFilter(object):
+    # added by KVH
+    def __init__(self, radius=2):
+        self.radius = radius
+    
+    def apply_low_pass_filter(self, img):
+        """
+        Apply a low pass filter to an image using OpenCV's Gaussian Blur.
+
+        Args:
+        image (numpy.array): The image to be processed.
+        radius (int): Radius for the Gaussian blur, which indirectly sets the cut-off frequency.
+
+        Returns:
+        numpy.array: The image after applying the low pass filter.
+        """
+        kernel_size = int(2 * self.radius + 1)
+        
+        # Apply Gaussian blur
+        blurred_image = cv2.GaussianBlur(img, (kernel_size, kernel_size), 0)
+
+
+        return blurred_image
+    
+    def __call__(self, img):
+        return self.apply_low_pass_filter(img) 
 
 class CovariateDataset(Dataset):
     """Dataset which will correlate the dataset with a specific label.

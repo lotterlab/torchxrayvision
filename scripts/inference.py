@@ -59,7 +59,8 @@ def load_split_metadf(dataset, split, only_good_files=True):
     return df
 
 
-def xrv_preprocess(image_path, final_resize=224, window_width=None, init_resize=None, start_at_top=True):
+def xrv_preprocess(image_path, final_resize=224, window_width=None, init_resize=None, start_at_top=True, additional_transforms = []):
+    # KVH: added option for additional transforms (to allow the use of custom transforms)
     if isinstance(image_path, np.ndarray):
         img = image_path
     else:
@@ -74,6 +75,7 @@ def xrv_preprocess(image_path, final_resize=224, window_width=None, init_resize=
     img = xrv.datasets.normalize(img, maxval=255, reshape=True)
 
     transforms = [xrv.datasets.XRayCenterCrop(), xrv.datasets.XRayResizer(init_resize)]
+    transforms.extend(additional_transforms) # add custom transforms 
     transform = tv.transforms.Compose(transforms)
     img = transform(img)
 
@@ -205,7 +207,7 @@ if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = '3'
     prediction_mode = 'higher_score' # 'higher_score', 'pathology'
     
-    splits = ['train_score', 'val', 'test']
+    splits = ['val', 'test'] # 'train_score
 
     # 35% pathology model 
     '''project_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/data/splits/mmc/0.35/pathology",
@@ -244,7 +246,7 @@ if __name__ == '__main__':
     
      # .35 score model
     
-    model_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/models/mmc/0.35/pneumothorax",
+    '''model_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/models/mmc/0.35/pneumothorax",
                       'cxp': "/lotterlab/users/khoebel/xray_generalization/models/cxp/0.35/pneumothorax"
                       }
     
@@ -256,24 +258,24 @@ if __name__ == '__main__':
 
     project_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/data/splits/mmc/0.35/pneumothorax",
                         'cxp': "/lotterlab/users/khoebel/xray_generalization/data/splits/cxp/0.35/pneumothorax"
-                        }
+                        }'''
     
 
     # .7 score model
     
-    '''model_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/models/mmc/0.7/pneumothorax",
-                      # 'cxp': "/lotterlab/users/khoebel/xray_generalization/models/cxp/0.7/pneumothorax"
+    model_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/models/mmc/0.7/pneumonia",
+                      'cxp': "/lotterlab/users/khoebel/xray_generalization/models/cxp/0.7/pneumonia"
                       }
     
 
     model_name_dict = {'mmc': ['mmc_score_0.7_seed_1'], # list of all names of models for inference
-                       # 'cxp': ['cxp_score_0.7_seed_1']
+                       'cxp': ['cxp_score_0.7_seed_1']
                        }
     
 
-    project_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/data/splits/mmc/0.7/pneumothorax",
-                        'cxp': "/lotterlab/users/khoebel/xray_generalization/data/splits/cxp/0.7/pneumothorax"
-                        }'''
+    project_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/data/splits/mmc/0.7/pneumonia",
+                        'cxp': "/lotterlab/users/khoebel/xray_generalization/data/splits/cxp/0.7/pneumonia"
+                        }
 
     # loop through project directories (i.e., datasets to run prediction on)
     for dataset in ['cxp', 'mmc']:

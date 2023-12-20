@@ -61,6 +61,7 @@ parser.add_argument('--use_scheduler', action='store_true')
 parser.add_argument('--class_balance', action='store_true')
 parser.add_argument('--imagenet_pretrained', action='store_true')
 parser.add_argument('--use_no_finding', default=False, action='store_true')
+# TODO add parser for additonal transforms and add these transforms to the image preprocessing step 
 
 cfg = parser.parse_args()
 cfg.output_dir = os.path.join(cfg.output_dir, cfg.name + '/')
