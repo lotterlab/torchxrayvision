@@ -2101,7 +2101,32 @@ class LowPassFilter(object):
         return blurred_image
     
     def __call__(self, img):
-        return self.apply_low_pass_filter(img) 
+        return self.apply_low_pass_filter(img)
+
+
+class DownSample(object):
+    # added by KVH
+    def __init__(self, patch_size=2):
+        self.patch_size = patch_size
+    
+    def downsample_img(self, img):
+        # only supported for square images 
+        assert img.shape[1] == img.shape[2], 'image size not square'
+        assert img.shape[1]%self.patch_size == 0, 'patch size needs to be factor of image size'
+
+        downsampled_img = np.zeros_like(img)
+        for i in range(int(img.shape[1]/self.patch_size)):
+            y_lower_limit, y_upper_limit = i*self.patch_size, (i+1)*self.patch_size 
+            for j in range(int(img.shape[2]/self.patch_size)):
+                x_lower_limit, x_upper_limit = j*self.patch_size, (j+1)*self.patch_size 
+                temp_av = np.mean(img[:, y_lower_limit:y_upper_limit, x_lower_limit:x_upper_limit])
+
+                downsampled_img[:, y_lower_limit:y_upper_limit, x_lower_limit:x_upper_limit] = temp_av
+
+        return downsampled_img
+
+    def __call__(self, img):
+        return self.downsample_img(img)  
 
 class CovariateDataset(Dataset):
     """Dataset which will correlate the dataset with a specific label.

@@ -61,7 +61,9 @@ parser.add_argument('--use_scheduler', action='store_true')
 parser.add_argument('--class_balance', action='store_true')
 parser.add_argument('--imagenet_pretrained', action='store_true')
 parser.add_argument('--use_no_finding', default=False, action='store_true')
-# TODO add parser for additonal transforms and add these transforms to the image preprocessing step 
+parser.add_argument('--use_high_pass_filter', type=int, default=None) # KVH; pass filter radius
+parser.add_argument('--use_low_pass_filter', type=int, default=None) # KVH; pass filter radius
+parser.add_argument('--use_downsampling', type=int, default=None) # KVH; pass patch size
 
 cfg = parser.parse_args()
 cfg.output_dir = os.path.join(cfg.output_dir, cfg.name + '/')
@@ -82,13 +84,35 @@ data_aug = None
     #     torchvision.transforms.ToTensor()
     # ])
     # print(data_aug)
+
+
 if cfg.data_aug_max_resize:
-    transforms = torchvision.transforms.Compose(
+    transforms = [xrv.datasets.XRayCenterCrop(), xrv.datasets.RandomZoom(cfg.data_aug_max_resize, cfg.im_size)]
+    transforms_val = [xrv.datasets.XRayCenterCrop(), xrv.datasets.XRayResizer(cfg.im_size)]
+    '''transforms = torchvision.transforms.Compose(
         [xrv.datasets.XRayCenterCrop(), xrv.datasets.RandomZoom(cfg.data_aug_max_resize, cfg.im_size)])
-    transforms_val = torchvision.transforms.Compose([xrv.datasets.XRayCenterCrop(), xrv.datasets.XRayResizer(cfg.im_size)])
+    transforms_val = torchvision.transforms.Compose([xrv.datasets.XRayCenterCrop(), xrv.datasets.XRayResizer(cfg.im_size)])'''
 else:
-    transforms = torchvision.transforms.Compose([xrv.datasets.XRayCenterCrop(), xrv.datasets.XRayResizer(cfg.im_size)])
-    transforms_val = transforms
+    transforms = [xrv.datasets.XRayCenterCrop(), xrv.datasets.XRayResizer(cfg.im_size)]
+    transforms_val = [xrv.datasets.XRayCenterCrop(), xrv.datasets.XRayResizer(cfg.im_size)]
+    
+    '''transforms = torchvision.transforms.Compose([xrv.datasets.XRayCenterCrop(), xrv.datasets.XRayResizer(cfg.im_size)])
+    transforms_val = transforms'''
+
+## parse and add additional transforms
+additional_transforms = list()
+if cfg.use_high_pass_filter is not None:
+    additional_transforms.append(xrv.datasets.HighPassFilter(cfg.use_high_pass_filter))
+elif cfg.use_low_pass_filter is not None:
+    additional_transforms.append(xrv.datasets.LowPassFilter(cfg.use_low_pass_filter))
+elif cfg.use_downsampling is not None:
+    additional_transforms.append(xrv.datasets.DownSample(cfg.use_downsampling))
+
+transforms.extend(additional_transforms)
+transforms_val.extend(additional_transforms)
+
+transforms = torchvision.transforms.Compose(transforms)
+transforms_val = torchvision.transforms.Compose(transforms_val)
 
 if 'race' in cfg.label_type:
     labels_to_use = ['Mapped_Race']
