@@ -32,4 +32,4 @@ def create_training_curves(run_name):
 
 
 if __name__ == '__main__':
-    create_training_curves('mimic_aug-w205-rz269_densenet_allviews_path_pretrained_wnofinding')
+    create_training_curves('mimic_noaug_densenet_allviews_path_pretrained_wnofinding_BMI-class-balance')

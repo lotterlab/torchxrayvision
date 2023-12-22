@@ -115,28 +115,33 @@ if use_class_balancing == 'multifactorial':
         all_props = pickle.load(f)
 
     class_balancing_props = []
-    #class_balancing_props.append(('Mapped_Race', ['Asian', 'Black', 'White']))
-    for confounder in ['Mapped_Race', 'Age_Bin', 'Sex']:
+
+    # sample by BMI
+    for confounder in ['Mapped_Race', 'BMI_Bin']:
         class_balancing_props.append((confounder, all_props[confounder]))
 
-    paths_to_use = ["Enlarged Cardiomediastinum",
-            "Cardiomegaly",
-            "Lung Opacity",
-            "Lung Lesion",
-            "Edema",
-            "Consolidation",
-            "Pneumonia",
-            "Atelectasis",
-            "Pneumothorax",
-            "Pleural Effusion",
-            "Pleural Other",
-            "Fracture",
-            "Support Devices",
-            'No Finding']
-    path_props = {}
-    for pathology in paths_to_use:
-        path_props[pathology] = all_props[pathology]
-    class_balancing_props.append(('pathology', path_props))
+    # sample by age, sex, pathology
+    # for confounder in ['Mapped_Race', 'Age_Bin', 'Sex']:
+    #     class_balancing_props.append((confounder, all_props[confounder]))
+    #
+    # paths_to_use = ["Enlarged Cardiomediastinum",
+    #         "Cardiomegaly",
+    #         "Lung Opacity",
+    #         "Lung Lesion",
+    #         "Edema",
+    #         "Consolidation",
+    #         "Pneumonia",
+    #         "Atelectasis",
+    #         "Pneumothorax",
+    #         "Pleural Effusion",
+    #         "Pleural Other",
+    #         "Fracture",
+    #         "Support Devices",
+    #         'No Finding']
+    # path_props = {}
+    # for pathology in paths_to_use:
+    #     path_props[pathology] = all_props[pathology]
+    # class_balancing_props.append(('pathology', path_props))
 else:
     class_balancing_props = None
     class_balancing_labels_df = None
