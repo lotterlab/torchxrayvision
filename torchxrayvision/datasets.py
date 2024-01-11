@@ -2071,6 +2071,11 @@ class HighPassFilter(object):
         # Subtract the blurred image from the original image to get the high-pass filtered image
         high_pass_filtered_image = cv2.subtract(img, blurred_image)
 
+        # Normalization
+        min_val = np.min(high_pass_filtered_image)
+        max_val = np.max(high_pass_filtered_image)
+        high_pass_filtered_image = ((high_pass_filtered_image - min_val) / (max_val - min_val)) * 2048 - 1024
+
         return high_pass_filtered_image
     
     def __call__(self, img):
@@ -2097,6 +2102,10 @@ class LowPassFilter(object):
         # Apply Gaussian blur
         blurred_image = cv2.GaussianBlur(img, (kernel_size, kernel_size), 0)
 
+        # Normalization
+        min_val = np.min(blurred_image)
+        max_val = np.max(blurred_image)
+        blurred_image = ((blurred_image - min_val) / (max_val - min_val)) * 2048 - 1024
 
         return blurred_image
     
@@ -2127,6 +2136,65 @@ class DownSample(object):
 
     def __call__(self, img):
         return self.downsample_img(img)  
+    
+class RandomizePixels(object):
+    
+    def __init__(self, seed=0, img_size=224):
+        np.random.seed(seed=seed)
+        self.img_size = img_size
+    
+    def randomize_pixels(self, img):
+        
+        randomized_img = np.copy(img).flatten()
+        np.random.shuffle(randomized_img)
+        randomized_img = randomized_img.reshape(1, self.img_size, self.img_size)
+
+        return randomized_img
+
+    def __call__(self, img):
+        return self.randomize_pixels(img) 
+    
+
+class WaveletDecom(object):
+    
+    def __init__(self, frequency_comp, level):
+        if frequency_comp=='hf':
+            self.high_freq_factor = 1.0
+            self.low_freq_factor = 0
+        elif frequency_comp == 'lf':
+            self.high_freq_factor = 0
+            self.low_freq_factor = 1.0
+            
+        self.level = level
+    
+    def modify_frequency_components(self, img):
+        """
+        Modify the frequency components of an image.
+
+        :param data: 2D numpy array (grayscale image).
+        :param wavelet: Type of wavelet to use for decomposition.
+        :param mode: Signal extension mode for wavelet transform.
+        :param level: Level of wavelet decomposition.
+        :param high_freq_factor: Factor to scale the high-frequency components.
+        :param low_freq_factor: Factor to scale the low-frequency (approximation) component.
+        :return: 2D numpy array of the modified image.
+        """
+        # Perform wavelet decomposition
+        coeffs = pywt.wavedec2(img, wavelet='haar', mode='symmetric', level=self.level)
+
+        # Modify the coefficients
+        coeffs_modified = list(coeffs)
+        coeffs_modified[0] *= self.low_freq_factor  # Scale the approximation coefficients
+        for i in range(1, len(coeffs)):
+            coeffs_modified[i] = tuple(component * self.high_freq_factor for component in coeffs[i])
+
+        # Reconstruct the image from modified coefficients
+        reconstructed = pywt.waverec2(coeffs_modified, wavelet='haar', mode='symmetric')
+        return reconstructed
+
+    def __call__(self, img):
+        return self.modify_frequency_components(img)
+    
 
 class CovariateDataset(Dataset):
     """Dataset which will correlate the dataset with a specific label.

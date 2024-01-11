@@ -64,6 +64,7 @@ parser.add_argument('--use_no_finding', default=False, action='store_true')
 parser.add_argument('--use_high_pass_filter', type=int, default=None) # KVH; pass filter radius
 parser.add_argument('--use_low_pass_filter', type=int, default=None) # KVH; pass filter radius
 parser.add_argument('--use_downsampling', type=int, default=None) # KVH; pass patch size
+parser.add_argument('--randomize_pixels', action='store_true', default=False) # KVH
 
 cfg = parser.parse_args()
 cfg.output_dir = os.path.join(cfg.output_dir, cfg.name + '/')
@@ -107,6 +108,8 @@ elif cfg.use_low_pass_filter is not None:
     additional_transforms.append(xrv.datasets.LowPassFilter(cfg.use_low_pass_filter))
 elif cfg.use_downsampling is not None:
     additional_transforms.append(xrv.datasets.DownSample(cfg.use_downsampling))
+elif cfg.randomize_pixels:
+    additional_transforms.append(xrv.datasets.RandomizePixels())
 
 transforms.extend(additional_transforms)
 transforms_val.extend(additional_transforms)

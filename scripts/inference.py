@@ -98,8 +98,10 @@ def run_predictions(model_name,
                     prediction_mode='pathology',
                     window_width = None, # KVH
                     init_resize=None, # KVH
-                    start_at_top=None, # KVH
-                    savedir = None # KVH
+                    start_at_top=None, # KVH,
+                    additional_transforms=[],
+                    savedir = None, # KVH
+                    score_model_target='' # modifier used if running a model trained on a different target, eg. the PNX score model on pneumonia
                     ):
     # KVH: added window_width, init_resize, start_at_top as additional parameters 
     # (required within the function but not provided)
@@ -134,7 +136,11 @@ def run_predictions(model_name,
         df['file_path'] = df.apply(partial(get_mimic_jpg_path, small=True), axis=1)
         df['view'] = df.ViewPosition
 
-    im_proc_fxn = partial(xrv_preprocess, window_width=window_width, init_resize=init_resize, start_at_top=start_at_top)
+    im_proc_fxn = partial(xrv_preprocess, 
+                          window_width=window_width, 
+                          init_resize=init_resize, 
+                          start_at_top=start_at_top, 
+                          additional_transforms=additional_transforms)
 
     pred_data = []
     with torch.no_grad():
@@ -157,7 +163,7 @@ def run_predictions(model_name,
             '''
 
     pred_df = pd.DataFrame(pred_data, columns=['Path', 'View'] + ['Pred_' + r for r in labels])
-    out_dir = os.path.join(PROJECT_DIR, 'prediction_dfs', model_name + '-' + checkpoint_name)
+    out_dir = os.path.join(PROJECT_DIR, 'prediction_dfs', score_model_target+model_name + '-' + checkpoint_name)
     if not os.path.exists(out_dir):
         os.makedirs(out_dir, exist_ok=True)
     
@@ -173,7 +179,9 @@ def inference_dataset(PROJECT_DIR:str,
                       model_name_dict:dict,
                       splits:list,
                       prediction_mode:str,
-                      checkpoint_name = 'best'
+                      checkpoint_name = 'best',
+                      additional_transforms=[],
+                      score_model_target=''
                       ):
     
 
@@ -195,7 +203,9 @@ def inference_dataset(PROJECT_DIR:str,
                                 window_width = None, # KVH
                                 init_resize=None, # KVH
                                 start_at_top=None, # KVH
-                                savedir = None # KVH
+                                additional_transforms=additional_transforms,# KVH
+                                savedir = None, 
+                                score_model_target=score_model_target # KVH
                                 )
     
 
@@ -204,12 +214,13 @@ def inference_dataset(PROJECT_DIR:str,
 if __name__ == '__main__':
 
 
-    os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
     prediction_mode = 'higher_score' # 'higher_score', 'pathology'
     
-    splits = ['val', 'test'] # 'train_score
+    # splits = ['val', 'test', 'train_score']
 
     # 35% pathology model 
+    # splits = ['val', 'test', 'train']
     '''project_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/data/splits/mmc/0.35/pathology",
                         'cxp': "/lotterlab/users/khoebel/xray_generalization/data/splits/cxp/0.35/pathology"}
     
@@ -228,6 +239,7 @@ if __name__ == '__main__':
     
     # 70% pathology model 
     '''
+    splits = ['val', 'test', 'train']
     project_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/data/splits/mimic/0.7/pathology",
                         'cxp': "/lotterlab/users/khoebel/xray_generalization/data/splits/cxp/0.7/pathology"
                         }
@@ -244,15 +256,15 @@ if __name__ == '__main__':
                                'cxp_densenet_pretrained_v4']
                    }'''
     
-     # .35 score model
-    
-    '''model_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/models/mmc/0.35/pneumothorax",
+    '''# .35 score model
+    splits = ['val', 'test', 'train_score']
+    model_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/models/mmc/0.35/pneumothorax",
                       'cxp': "/lotterlab/users/khoebel/xray_generalization/models/cxp/0.35/pneumothorax"
                       }
     
 
-    model_name_dict = {'mmc': ['mmc_score_0.35_seed_1'], # list of all names of models for inference
-                       'cxp': ['cxp_score_0.35_seed_1']
+    model_name_dict = {'mmc': ['mmc_score_0.35_seed_1_DS32'], # list of all names of models for inference
+                       'cxp': ['cxp_score_0.35_seed_1_DS32']
                        }
     
 
@@ -262,7 +274,8 @@ if __name__ == '__main__':
     
 
     # .7 score model
-    
+    # splits = ['val', 'test']
+    splits = ['test']
     model_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/models/mmc/0.7/pneumonia",
                       'cxp': "/lotterlab/users/khoebel/xray_generalization/models/cxp/0.7/pneumonia"
                       }
@@ -273,9 +286,12 @@ if __name__ == '__main__':
                        }
     
 
-    project_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/data/splits/mmc/0.7/pneumonia",
-                        'cxp': "/lotterlab/users/khoebel/xray_generalization/data/splits/cxp/0.7/pneumonia"
+    project_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/data/splits/mmc/0.7/effusion",
+                        'cxp': "/lotterlab/users/khoebel/xray_generalization/data/splits/cxp/0.7/effusion"
                         }
+    
+    additional_transforms = []
+    # additional_transforms = [xrv.datasets.DownSample(patch_size =32)]
 
     # loop through project directories (i.e., datasets to run prediction on)
     for dataset in ['cxp', 'mmc']:
@@ -286,6 +302,8 @@ if __name__ == '__main__':
                           model_name_dict=model_name_dict,
                           splits=splits,
                           prediction_mode=prediction_mode,
-                          checkpoint_name='best'
+                          checkpoint_name='best',
+                          additional_transforms=additional_transforms, 
+                          score_model_target='pneumonia_'
                           )
     
