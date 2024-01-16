@@ -214,7 +214,7 @@ def inference_dataset(PROJECT_DIR:str,
 if __name__ == '__main__':
 
 
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '3'
     prediction_mode = 'higher_score' # 'higher_score', 'pathology'
     
     # splits = ['val', 'test', 'train_score']
@@ -274,24 +274,24 @@ if __name__ == '__main__':
     
 
     # .7 score model
-    # splits = ['val', 'test']
-    splits = ['test']
-    model_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/models/mmc/0.7/pneumonia",
-                      'cxp': "/lotterlab/users/khoebel/xray_generalization/models/cxp/0.7/pneumonia"
+    splits = ['val', 'test']
+    
+    model_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/models/mmc/0.7/pneumothorax",
+                      'cxp': "/lotterlab/users/khoebel/xray_generalization/models/cxp/0.7/pneumothorax"
                       }
     
 
-    model_name_dict = {'mmc': ['mmc_score_0.7_seed_1'], # list of all names of models for inference
-                       'cxp': ['cxp_score_0.7_seed_1']
+    model_name_dict = {'mmc': ['mmc_score_0.7_seed_1_LPF300'], # list of all names of models for inference
+                       'cxp': ['cxp_score_0.7_seed_1_LPF300']
                        }
     
 
-    project_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/data/splits/mmc/0.7/effusion",
-                        'cxp': "/lotterlab/users/khoebel/xray_generalization/data/splits/cxp/0.7/effusion"
+    project_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/data/splits/mmc/0.7/pneumothorax",
+                        'cxp': "/lotterlab/users/khoebel/xray_generalization/data/splits/cxp/0.7/pneumothorax"
                         }
     
-    additional_transforms = []
-    # additional_transforms = [xrv.datasets.DownSample(patch_size =32)]
+    # additional_transforms = []
+    additional_transforms = [xrv.datasets.LowPassFilter(300)]
 
     # loop through project directories (i.e., datasets to run prediction on)
     for dataset in ['cxp', 'mmc']:
@@ -304,6 +304,6 @@ if __name__ == '__main__':
                           prediction_mode=prediction_mode,
                           checkpoint_name='best',
                           additional_transforms=additional_transforms, 
-                          score_model_target='pneumonia_'
+                          score_model_target=''
                           )
     

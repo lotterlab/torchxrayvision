@@ -65,6 +65,9 @@ parser.add_argument('--use_high_pass_filter', type=int, default=None) # KVH; pas
 parser.add_argument('--use_low_pass_filter', type=int, default=None) # KVH; pass filter radius
 parser.add_argument('--use_downsampling', type=int, default=None) # KVH; pass patch size
 parser.add_argument('--randomize_pixels', action='store_true', default=False) # KVH
+parser.add_argument('--wavelet_transform_type', type=str, default=None) # KVH
+parser.add_argument('--wavelet_transform_level', type=int, default=1) # KVH
+
 
 cfg = parser.parse_args()
 cfg.output_dir = os.path.join(cfg.output_dir, cfg.name + '/')
@@ -110,6 +113,9 @@ elif cfg.use_downsampling is not None:
     additional_transforms.append(xrv.datasets.DownSample(cfg.use_downsampling))
 elif cfg.randomize_pixels:
     additional_transforms.append(xrv.datasets.RandomizePixels())
+elif cfg.wavelet_transform_type is not None:
+    assert cfg.wavelet_transform_type in ['hf', 'lf'], f'wavelet transform type {cfg.wavelet_transform_type} not recognized'
+    additional_transforms.append(xrv.WaveletDecom(frequency_comp=cfg.wavelet_transform_type, level=cfg.wavelet_transform_level))
 
 transforms.extend(additional_transforms)
 transforms_val.extend(additional_transforms)
@@ -125,6 +131,7 @@ if 'race' in cfg.label_type:
     else:
         labels_to_use += ['Asian', 'Black', 'White']
 elif cfg.label_type == 'higher_score':
+    n_classes = 2
     labels_to_use = ['Higher_Score','CXP','MMC']
 else:
     labels_to_use = None
@@ -371,7 +378,7 @@ if "densenet" in cfg.model:
         weights = 'imagenet'
     else:
         weights = None
-    model = xrv.models.DenseNet(num_classes=2, in_channels=1, weights=weights,
+    model = xrv.models.DenseNet(num_classes=n_classes, in_channels=1, weights=weights,
                                 **xrv.models.get_densenet_params(cfg.model))
 elif "resnet101" in cfg.model:
     model = torchvision.models.resnet101(num_classes=n_classes, pretrained=False)
