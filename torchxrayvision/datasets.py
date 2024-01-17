@@ -2046,8 +2046,84 @@ class XRayCenterCrop(object):
     def __call__(self, img):
         return self.crop_center(img)
 
+# helper functions for HPF and LPF
+def fft(img):
+    assert(img.ndim == 2)
+    img_c2 = np.fft.fft2(img)
+    img_c3 = np.fft.fftshift(img_c2)
+    spectra = np.log(1+np.abs(img_c3))
+    return spectra
+
+
+def filter_circle(TFcircleIN,fft_img_channel):
+    temp = np.zeros(fft_img_channel.shape[:2],dtype=complex)
+    temp[TFcircleIN] = fft_img_channel[TFcircleIN]
+    return(temp)
+
+def draw_circle(shape,diameter):
+    assert len(shape) == 2
+    TF = np.zeros(shape,dtype=np.bool)
+    center = np.array(TF.shape)/2.0
+
+    for iy in range(shape[0]):
+        for ix in range(shape[1]):
+            TF[iy,ix] = (iy- center[0])**2 + (ix - center[1])**2 < diameter **2
+    return(TF)
+
+def filter_and_ifft(x, filter):
+    return np.real_if_close(np.fft.ifft2(np.fft.ifftshift(filter_circle(filter, x))))
+
+# frequency domain filtering
+class LowPassFilter(object):
+    
+    def __init__(self, radius=2):
+        self.diameter = 2*radius
+        self.filter = draw_circle(shape = (224, 224), diameter = self.diameter)
+     # create filter 
+    
+    
+    def apply_low_pass_filter(self, img):
+        img = img[0, :, :]
+        spectra = np.fft.fftshift(np.fft.fft2(img))
+        img = np.real(filter_and_ifft(spectra, self.filter))
+
+        # Normalization
+        min_val, max_val = np.min(img), np.max(img)
+        img_normalized = ((img - min_val) / (max_val - min_val)) * 2048 - 1024
+        
+        return np.expand_dims(img_normalized, axis=0)
+    
+    
+    def __call__(self, img):
+        return self.apply_low_pass_filter(img) 
+    
 
 class HighPassFilter(object):
+    
+    def __init__(self, radius=2):
+        self.diameter = 2*radius
+        self.filter = ~draw_circle(shape = (224, 224), diameter = self.diameter)
+     # create filter 
+    
+    
+    def apply_high_pass_filter(self, img):
+        img = img[0, :, :]
+        spectra = np.fft.fftshift(np.fft.fft2(img))
+        img = np.real(filter_and_ifft(spectra, self.filter))
+
+        # Normalization
+        min_val, max_val = np.min(img), np.max(img)
+        img_normalized = ((img - min_val) / (max_val - min_val)) * 2048 - 1024
+        
+        return np.expand_dims(img_normalized, axis=0)
+    
+    
+    def __call__(self, img):
+        return self.apply_high_pass_filter(img) 
+
+
+# Pseudo High Pass Filter (image domain)
+class HighPassFilter_old(object):
     # added by KVH
     def __init__(self, radius=2):
         self.radius = radius
@@ -2080,8 +2156,9 @@ class HighPassFilter(object):
     
     def __call__(self, img):
         return self.apply_high_pass_filter(img) 
-    
-class LowPassFilter(object):
+
+# Pseudo Low Pass Filter (image domain)   
+class LowPassFilter_old(object):
     # added by KVH
     def __init__(self, radius=2):
         self.radius = radius
