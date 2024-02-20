@@ -242,6 +242,7 @@ if "mimic_ch" in cfg.dataset:
         print(metacsvpath)
         print(val_csvpath)
         print(val_metacsvpath)
+
         valid_dataset = xrv.datasets.MIMIC_Dataset(
             imgpath=imgpath,
             csvpath=val_csvpath,

@@ -2089,9 +2089,9 @@ class LowPassFilter(object):
 
         # Normalization
         min_val, max_val = np.min(img), np.max(img)
-        img_normalized = ((img - min_val) / (max_val - min_val)) * 2048 - 1024
+        img_normalized = ((img - min_val) / (max_val - min_val+0.0001)) * 2048 - 1024
         
-        return np.expand_dims(img_normalized, axis=0)
+        return np.expand_dims(img_normalized, axis=0).astype(np.float32)
     
     
     def __call__(self, img):
@@ -2107,15 +2107,20 @@ class HighPassFilter(object):
     
     
     def apply_high_pass_filter(self, img):
+        img = img.astype(np.float64)
         img = img[0, :, :]
         spectra = np.fft.fftshift(np.fft.fft2(img))
         img = np.real(filter_and_ifft(spectra, self.filter))
 
+        # set NaNs to zero
+        img = np.nan_to_num(img)
+
         # Normalization
         min_val, max_val = np.min(img), np.max(img)
-        img_normalized = ((img - min_val) / (max_val - min_val)) * 2048 - 1024
+        img_normalized = ((img - min_val) / (max_val - min_val+0.0001)) * 2048 - 1024
         
-        return np.expand_dims(img_normalized, axis=0)
+        
+        return np.expand_dims(img_normalized, axis=0).astype(np.float32)
     
     
     def __call__(self, img):

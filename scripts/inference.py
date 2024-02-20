@@ -8,6 +8,7 @@ date created: 2023/09/01
 updates: 2023/11/17 - moved merging with ground truth df to xray_generalization/merge_predictions_with_gt_labels.py
 """
 
+import argparse
 import numpy as np
 import os
 import pandas as pd
@@ -101,11 +102,12 @@ def run_predictions(model_name,
                     start_at_top=None, # KVH,
                     additional_transforms=[],
                     savedir = None, # KVH
-                    score_model_target='' # modifier used if running a model trained on a different target, eg. the PNX score model on pneumonia
+                    score_model_target='',# modifier used if running a model trained on a different target, eg. the PNX score model on pneumonia
+                    gpu='0' 
                     ):
     # KVH: added window_width, init_resize, start_at_top as additional parameters 
     # (required within the function but not provided)
-
+    os.environ['CUDA_VISIBLE_DEVICES'] = gpu
     print(prediction_mode)
     # KVH modified to accommodate both pathology and higher-score predictions 
     if prediction_mode == 'pathology':
@@ -163,7 +165,10 @@ def run_predictions(model_name,
             '''
 
     pred_df = pd.DataFrame(pred_data, columns=['Path', 'View'] + ['Pred_' + r for r in labels])
-    out_dir = os.path.join(PROJECT_DIR, 'prediction_dfs', score_model_target+model_name + '-' + checkpoint_name)
+    if score_model_target != '':
+        out_dir = os.path.join(PROJECT_DIR, 'prediction_dfs', score_model_target+'_'+model_name + '-' + checkpoint_name)
+    else: 
+        out_dir = os.path.join(PROJECT_DIR, 'prediction_dfs', model_name + '-' + checkpoint_name)
     if not os.path.exists(out_dir):
         os.makedirs(out_dir, exist_ok=True)
     
@@ -181,7 +186,8 @@ def inference_dataset(PROJECT_DIR:str,
                       prediction_mode:str,
                       checkpoint_name = 'best',
                       additional_transforms=[],
-                      score_model_target=''
+                      score_model_target='',
+                      gpu='0'
                       ):
     
 
@@ -205,7 +211,8 @@ def inference_dataset(PROJECT_DIR:str,
                                 start_at_top=None, # KVH
                                 additional_transforms=additional_transforms,# KVH
                                 savedir = None, 
-                                score_model_target=score_model_target # KVH
+                                score_model_target=score_model_target, # KVH,
+                                gpu=gpu
                                 )
     
 
@@ -214,29 +221,30 @@ def inference_dataset(PROJECT_DIR:str,
 if __name__ == '__main__':
 
 
-    os.environ['CUDA_VISIBLE_DEVICES'] = '3'
-    prediction_mode = 'higher_score' # 'higher_score', 'pathology'
     
     # splits = ['val', 'test', 'train_score']
 
-    # 35% pathology model 
-    # splits = ['val', 'test', 'train']
-    '''project_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/data/splits/mmc/0.35/pathology",
-                        'cxp': "/lotterlab/users/khoebel/xray_generalization/data/splits/cxp/0.35/pathology"}
+    '''# 50% pathology model 
+    prediction_mode ='pathology'
+    splits =  ['train_score']# ['test_orig','val', 'test']
+    project_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/data/splits/mmc/0.5/pathology",
+                        'cxp': "/lotterlab/users/khoebel/xray_generalization/data/splits/cxp/0.5/pathology"}
     
-    model_dir_dict = {'mmc': "/lotterlab/users/khoebel/xray_generalization/models/mmc/0.35/pathology",
-                      'cxp': '/lotterlab/users/khoebel/xray_generalization/models/cxp/0.35/pathology'
+    model_dir_dict =  {'mmc': "/lotterlab/users/khoebel/xray_generalization/models/mmc/0.5/pathology",
+                      # 'cxp': '/lotterlab/users/khoebel/xray_generalization/models/cxp/0.5/pathology'
                       }
     
-    model_name_dict = {'mmc': [# 'mmc_densenet_pretrained_0.35', 
-                               'mmc_densenet_pretrained_0.35_seed_1',
-                               'mmc_densenet_pretrained_0.35_seed_2'],
-                       'cxp': ['cxp_densenet_pretrained_0.35', 
-                                'cxp_densenet_pretrained_0.35_seed_1',
-                                'cxp_densenet_pretrained_0.35_seed_2']
-                   }'''
-    
-    
+    model_name_dict = {
+                       'mmc': [ 'mmc_densenet_pretrained_0.5_seed_0', 
+                              #  'mmc_densenet_pretrained_0.5_seed_1',
+                          # 'mmc_densenet_pretrained_0.5_seed_2'
+                               ],
+                       # 'cxp': ['cxp_densenet_pretrained_0.5_seed_0', 
+                       #          'cxp_densenet_pretrained_0.5_seed_1',
+                        #         'cxp_densenet_pretrained_0.5_seed_2'
+                       #          ]
+                   }
+    '''
     # 70% pathology model 
     '''
     splits = ['val', 'test', 'train']
@@ -255,26 +263,10 @@ if __name__ == '__main__':
                                'cxp_densenet_pretrained_v3',
                                'cxp_densenet_pretrained_v4']
                    }'''
-    
-    '''# .35 score model
-    splits = ['val', 'test', 'train_score']
-    model_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/models/mmc/0.35/pneumothorax",
-                      'cxp': "/lotterlab/users/khoebel/xray_generalization/models/cxp/0.35/pneumothorax"
-                      }
-    
 
-    model_name_dict = {'mmc': ['mmc_score_0.35_seed_1_DS32'], # list of all names of models for inference
-                       'cxp': ['cxp_score_0.35_seed_1_DS32']
-                       }
-    
-
-    project_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/data/splits/mmc/0.35/pneumothorax",
-                        'cxp': "/lotterlab/users/khoebel/xray_generalization/data/splits/cxp/0.35/pneumothorax"
-                        }'''
-    
 
     # .7 score model
-    splits = ['val', 'test']
+    '''splits = ['val', 'test']
     
     model_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/models/mmc/0.7/pneumothorax",
                       'cxp': "/lotterlab/users/khoebel/xray_generalization/models/cxp/0.7/pneumothorax"
@@ -288,22 +280,154 @@ if __name__ == '__main__':
 
     project_dir_dict = {'mmc':"/lotterlab/users/khoebel/xray_generalization/data/splits/mmc/0.7/pneumothorax",
                         'cxp': "/lotterlab/users/khoebel/xray_generalization/data/splits/cxp/0.7/pneumothorax"
-                        }
-    
-    # additional_transforms = []
-    additional_transforms = [xrv.datasets.LowPassFilter(300)]
+                        }'''  
 
-    # loop through project directories (i.e., datasets to run prediction on)
-    for dataset in ['cxp', 'mmc']:
-        PROJECT_DIR = project_dir_dict[dataset]
-        print(PROJECT_DIR)
-        inference_dataset(PROJECT_DIR=PROJECT_DIR,
-                          model_dir_dict=model_dir_dict, 
-                          model_name_dict=model_name_dict,
-                          splits=splits,
-                          prediction_mode=prediction_mode,
-                          checkpoint_name='best',
-                          additional_transforms=additional_transforms, 
-                          score_model_target=''
-                          )
+
+    # .5 score model
+    prediction_mode = 'higher_score'
+    splits = ['test', 'val'] # , 'train_score']
+
+    gpu = '0'
+    score_pathologies = ['pneumothorax', 'pneumonia', 'effusion']
+
+    # seed = '2'
+
+    # additional_transforms = []
+    # additional_transforms = [xrv.datasets.LowPassFilter(300)]
+    # gpus = ['0', '1']
+
+    for seed in ['2', '3']: 
+        for filter_type in ['LPF']:# ['LPF','HPF']:
+            # set filter type for name and transform
+            print(filter_type)
+            for radius in [1, 2, 5, 10, 25, 50, 75]:
+
+                for score_pathology in score_pathologies: 
+
+                    model_dir_dict = {'cxp': os.path.join("/lotterlab/users/khoebel/xray_generalization/models/cxp/0.5", score_pathology),
+                                        'mmc': os.path.join("/lotterlab/users/khoebel/xray_generalization/models/mmc/0.5", score_pathology)
+                                        }
+                        
+                    project_dir_dict = {'cxp': os.path.join("/lotterlab/users/khoebel/xray_generalization/data/splits/cxp/0.5", score_pathology),
+                                        'mmc':os.path.join("/lotterlab/users/khoebel/xray_generalization/data/splits/mmc/0.5", score_pathology)
+                                        }
+
+                    # set model name 
+                    model_name_dict = { 'cxp': [f'cxp_score_0.5_seed_{seed}_{filter_type}{str(radius)}'],
+                                        'mmc': [f'mmc_score_0.5_seed_{seed}_{filter_type}{str(radius)}'] # list of all names of models for inference
+                                    }
+                    
+                    # set filter transform 
+                    if filter_type == 'HPF':
+                        additional_transforms = [xrv.datasets.HighPassFilter(radius)]
+                    elif filter_type == 'LPF':
+                        additional_transforms = [xrv.datasets.LowPassFilter(radius)]
+                    else:
+                        raise ValueError('filter type not recognized')
+                    print(additional_transforms)
+                    print(model_name_dict)
+                    # for given filter type and filter radius run inference on both dataset using both models 
+                    # loop through project directories (i.e., datasets to run prediction on)
+                    for i, dataset in enumerate(['cxp', 'mmc']):
+                        PROJECT_DIR = project_dir_dict[dataset]
+                        print(PROJECT_DIR)
+                        inference_dataset(PROJECT_DIR=PROJECT_DIR,
+                                        model_dir_dict=model_dir_dict, 
+                                        model_name_dict=model_name_dict,
+                                        splits=splits,
+                                        prediction_mode=prediction_mode,
+                                        checkpoint_name='best',
+                                        additional_transforms=additional_transforms, 
+                                        score_model_target='',
+                                        gpu = gpu
+                                        )
+            
+    # simple or randomize score model predictions 
+    '''
+    prediction_mode = 'higher_score'
+    splits = ['test', 'val'] # , 'train_score']
+    gpu = '1'
+    score_pathologies = ['pneumothorax', 'pneumonia', 'effusion']
+
+    for seed in ['2', '3']:
+        for score_pathology in score_pathologies:
+            model_dir_dict = {'cxp': os.path.join("/lotterlab/users/khoebel/xray_generalization/models/cxp/0.5", score_pathology),
+                            'mmc': os.path.join("/lotterlab/users/khoebel/xray_generalization/models/mmc/0.5", score_pathology)
+                            }
+            
+            project_dir_dict = {'cxp': os.path.join("/lotterlab/users/khoebel/xray_generalization/data/splits/cxp/0.5", score_pathology),
+                                'mmc':os.path.join("/lotterlab/users/khoebel/xray_generalization/data/splits/mmc/0.5", score_pathology)
+                                }
+            
+            additional_transforms = [xrv.datasets.RandomizePixels()]
+            
+            model_name_dict = { 'cxp': [f'cxp_score_0.5_seed_{seed}_randomize'],
+                                        'mmc': [f'mmc_score_0.5_seed_{seed}_randomize'] # list of all names of models for inference
+                                    }
+            
+            print(additional_transforms)
+            print(model_name_dict)
+            # for given filter type and filter radius run inference on both dataset using both models 
+            # loop through project directories (i.e., datasets to run prediction on)
+            for i, dataset in enumerate(['cxp', 'mmc']):
+                PROJECT_DIR = project_dir_dict[dataset]
+                print(PROJECT_DIR)
+                inference_dataset(PROJECT_DIR=PROJECT_DIR,
+                                model_dir_dict=model_dir_dict, 
+                                model_name_dict=model_name_dict,
+                                splits=splits,
+                                prediction_mode=prediction_mode,
+                                checkpoint_name='best',
+                                additional_transforms=additional_transforms, 
+                                score_model_target='',
+                                gpu = gpu
+                                )
+        '''
+    # score model target pathology generalizability
+    '''
+    prediction_mode = 'higher_score'
+    splits = ['test', 'val'] # , 'train_score']
     
+    gpu = '1'
+    score_pathologies = ['pneumonia']# , 'pneumonia', 'effusion']
+
+    additional_transforms = []
+
+    for seed in ['2', '3']: 
+
+        for score_pathology in score_pathologies:
+            # define model 
+            model_dir_dict = {'cxp': os.path.join("/lotterlab/users/khoebel/xray_generalization/models/cxp/0.5", score_pathology),
+                            'mmc': os.path.join("/lotterlab/users/khoebel/xray_generalization/models/mmc/0.5", score_pathology)
+                            }
+            
+            
+            model_name_dict = { 'cxp': [f'cxp_score_0.5_seed_{seed}'],
+                                        'mmc': [f'mmc_score_0.5_seed_{seed}'] # list of all names of models for inference
+                                    }
+            print("model", score_pathology)
+            for target_dataset_pathology in ['effusion']:# [ 'pneumonia', 'effusion']:
+                if target_dataset_pathology == score_pathology:
+                    score_pathology = ''
+                
+                project_dir_dict = {'cxp': os.path.join("/lotterlab/users/khoebel/xray_generalization/data/splits/cxp/0.5", target_dataset_pathology),
+                                    'mmc':os.path.join("/lotterlab/users/khoebel/xray_generalization/data/splits/mmc/0.5", target_dataset_pathology)
+                                    }
+                
+                print('dataset', target_dataset_pathology)
+                # for given filter type and filter radius run inference on both dataset using both models 
+                # loop through project directories (i.e., datasets to run prediction on)
+                for i, dataset in enumerate(['cxp', 'mmc']):
+                    PROJECT_DIR = project_dir_dict[dataset]
+                    print(PROJECT_DIR)
+                    inference_dataset(PROJECT_DIR=PROJECT_DIR,
+                                    model_dir_dict=model_dir_dict, 
+                                    model_name_dict=model_name_dict,
+                                    splits=splits,
+                                    prediction_mode=prediction_mode,
+                                    checkpoint_name='best',
+                                    additional_transforms=additional_transforms, 
+                                    score_model_target=score_pathology,
+                                    gpu = gpu
+                                    )
+    '''
