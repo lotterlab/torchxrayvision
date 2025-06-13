@@ -1,5 +1,6 @@
 from . import datasets
 from . import models
+from . import preprocess_models
 from . import baseline_models
 from . import autoencoders
 

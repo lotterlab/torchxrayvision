@@ -28,9 +28,9 @@ import torchxrayvision as xrv
 parser = argparse.ArgumentParser()
 # parser.add_argument('-f', type=str, default="", help='')
 parser.add_argument('--name', type=str)
-parser.add_argument('--output_dir', type=str, default="../outputs/")
+parser.add_argument('--output_dir', type=str, default="/lotterlab/lotterb/project_data/autopreprocess/torchxrayvisionmodels/")
 parser.add_argument('--dataset', type=str, default="chex")
-parser.add_argument('--dataset_dir', type=str, default="./../../../datasets/")
+parser.add_argument('--dataset_dir', type=str, default="/lotterlab/datasets/")
 parser.add_argument('--model', type=str, default="resnet50")
 parser.add_argument('--seed', type=int, default=0, help='')
 parser.add_argument('--cuda', type=bool, default=True, help='')
@@ -52,7 +52,7 @@ parser.add_argument('--label_concat_reg', type=bool, default=False, help='')
 parser.add_argument('--labelunion', type=bool, default=False, help='')
 parser.add_argument('--im_size', type=int, default=512, help='')
 parser.add_argument('--data_aug_window_width_min', type=int, default=None, help='')
-parser.add_argument('--data_aug_max_resize', type=int, default=None, help='')
+#parser.add_argument('--data_aug_max_resize', type=int, default=None, help='')
 parser.add_argument('--gpu', '-g', default='0', help='which gpu to use', required=True)
 parser.add_argument('--label_type', default='pathology')
 parser.add_argument('--fixed_splits', action='store_true')
@@ -62,6 +62,7 @@ parser.add_argument('--class_balance', action='store_true')
 parser.add_argument('--multifactorial_class_balance', action='store_true')
 parser.add_argument('--imagenet_pretrained', action='store_true')
 parser.add_argument('--use_no_finding', default=False, action='store_true')
+parser.add_argument('--window_nbins', type=int)
 
 cfg = parser.parse_args()
 cfg.output_dir = os.path.join(cfg.output_dir, cfg.name + '/')
@@ -82,13 +83,14 @@ data_aug = None
     #     torchvision.transforms.ToTensor()
     # ])
     # print(data_aug)
-if cfg.data_aug_max_resize:
-    transforms = torchvision.transforms.Compose(
-        [xrv.datasets.XRayCenterCrop(), xrv.datasets.RandomZoom(cfg.data_aug_max_resize, cfg.im_size)])
-    transforms_val = torchvision.transforms.Compose([xrv.datasets.XRayCenterCrop(), xrv.datasets.XRayResizer(cfg.im_size)])
-else:
-    transforms = torchvision.transforms.Compose([xrv.datasets.XRayCenterCrop(), xrv.datasets.XRayResizer(cfg.im_size)])
-    transforms_val = transforms
+# if cfg.data_aug_max_resize:
+#     transforms = torchvision.transforms.Compose(
+#         [xrv.datasets.XRayCenterCrop(), xrv.datasets.RandomZoom(cfg.data_aug_max_resize, cfg.im_size)])
+#     transforms_val = torchvision.transforms.Compose([xrv.datasets.XRayCenterCrop(), xrv.datasets.XRayResizer(cfg.im_size)])
+# else:
+transforms = torchvision.transforms.Compose([xrv.datasets.XRayCenterCrop(), xrv.datasets.XRayResizer(cfg.im_size)])
+#transforms = torchvision.transforms.Compose([xrv.datasets.XRayCenterCrop(), xrv.datasets.XRayResizer(cfg.im_size)])
+transforms_val = transforms
 
 if 'race' in cfg.label_type:
     labels_to_use = ['Mapped_Race']
@@ -97,8 +99,11 @@ if 'race' in cfg.label_type:
         labels_to_use += ['Black', 'White']
     else:
         labels_to_use += ['Asian', 'Black', 'White']
-else:
+elif cfg.label_type == 'pathology':
     labels_to_use = None
+else:
+    labels_to_use = [cfg.label_type, 0, 1]
+    n_classes = 1
 
 #use_class_balancing = not cfg.taskweights # if taskweights aren't use, do equal sampling
 if cfg.multifactorial_class_balance:
@@ -322,7 +327,7 @@ elif len(datas) == 1:
 else:
     print("merge datasets")
     train_dataset = xrv.datasets.Merge_Dataset(train_datas)
-    test_dataset = xrv.datasets.Merge_Dataset(test_datas)
+    #test_dataset = xrv.datasets.Merge_Dataset(test_datas)
 
 
 # Setting the seed
@@ -344,39 +349,48 @@ if labels_to_use is None:
     n_classes = train_dataset.labels.shape[1]
     use_softmax = False
 else:
-    use_softmax = True
-
-if "densenet" in cfg.model:
-    if cfg.imagenet_pretrained:
-        weights = 'imagenet'
+    if n_classes == 1:
+        use_softmax = False
     else:
-        weights = None
-    model = xrv.models.DenseNet(num_classes=n_classes, in_channels=1, weights=weights,
-                                **xrv.models.get_densenet_params(cfg.model)) 
-elif "resnet101" in cfg.model:
-    model = torchvision.models.resnet101(num_classes=n_classes, pretrained=False)
-    #patch for single channel
-    model.conv1 = torch.nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-    
-elif "resnet50" in cfg.model:
-    model = torchvision.models.resnet50(num_classes=n_classes, pretrained=False)
-    #patch for single channel
-    model.conv1 = torch.nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-    
-elif "shufflenet_v2_x2_0" in cfg.model:
-    model = torchvision.models.shufflenet_v2_x2_0(num_classes=n_classes, pretrained=False)
-    #patch for single channel
-    model.conv1[0] = torch.nn.Conv2d(1, 24, kernel_size=3, stride=2, padding=1, bias=False)
-elif "squeezenet1_1" in cfg.model:
-    model = torchvision.models.squeezenet1_1(num_classes=n_classes, pretrained=False)
-    #patch for single channel
-    model.features[0] = torch.nn.Conv2d(1, 64, kernel_size=3, stride=2, padding=1, bias=False)
-else:
-    raise Exception("no model")
+        use_softmax = True
 
+def load_model(nc=n_classes):
+    if "densenet" in cfg.model:
+        if cfg.imagenet_pretrained:
+            weights = 'imagenet'
+        else:
+            weights = None
+        model = xrv.models.DenseNet(num_classes=nc, in_channels=1, weights=weights,
+                                    **xrv.models.get_densenet_params(cfg.model))
+    elif "resnet101" in cfg.model:
+        model = torchvision.models.resnet101(num_classes=nc, pretrained=False)
+        #patch for single channel
+        model.conv1 = torch.nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+
+    elif "resnet50" in cfg.model:
+        model = torchvision.models.resnet50(num_classes=nc, pretrained=False)
+        #patch for single channel
+        model.conv1 = torch.nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+
+    elif "shufflenet_v2_x2_0" in cfg.model:
+        model = torchvision.models.shufflenet_v2_x2_0(num_classes=nc, pretrained=False)
+        #patch for single channel
+        model.conv1[0] = torch.nn.Conv2d(1, 24, kernel_size=3, stride=2, padding=1, bias=False)
+    elif "squeezenet1_1" in cfg.model:
+        model = torchvision.models.squeezenet1_1(num_classes=nc, pretrained=False)
+        #patch for single channel
+        model.features[0] = torch.nn.Conv2d(1, 64, kernel_size=3, stride=2, padding=1, bias=False)
+    else:
+        raise Exception("no model")
+    return  model
+
+
+model = load_model()
+if cfg.window_nbins:
+    params_model = load_model(nc=3*cfg.window_nbins+1)
+    model = xrv.preprocess_models.MonotonicSplineWindower(params_model, cfg.window_nbins, predict_model=model)
 
 train_utils.train(model, train_dataset, cfg, valid_dataset, use_softmax)
-
 
 print("Done")
 # test_loader = torch.utils.data.DataLoader(test_dataset,

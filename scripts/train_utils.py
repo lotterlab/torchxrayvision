@@ -187,6 +187,8 @@ def train_epoch(cfg, epoch, model, device, train_loader, optimizer, criterion, l
         if criterion == 'softmax':
             loss = F.cross_entropy(outputs, targets)
         else:
+            # if (len(outputs) == len(targets)) & (targets.ndim == 1):
+            #     targets = targets.unsqueeze(1)
             for task in range(targets.shape[1]):
                 task_output = outputs[:,task]
                 task_target = targets[:,task]

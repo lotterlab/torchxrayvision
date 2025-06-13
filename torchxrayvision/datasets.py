@@ -54,7 +54,8 @@ def normalize(img, maxval, reshape=False):
     if img.max() > maxval:
         raise Exception("max image value ({}) higher than expected bound ({}).".format(img.max(), maxval))
 
-    img = (2 * (img.astype(np.float32) / maxval) - 1.) * 1024
+    #img = (2 * (img.astype(np.float32) / maxval) - 1.) * 1024
+    img = img.astype(np.float32)
 
     if reshape:
         # Check that images are 2D arrays
@@ -306,8 +307,11 @@ class MergeDataset(Dataset):
             self.length += len(dataset)
             self.offset = np.concatenate([self.offset, np.zeros(len(dataset)) + currentoffset])
             currentoffset += len(dataset)
-            if dataset.pathologies != self.pathologies:
+            if len(dataset.pathologies) != len(self.pathologies):
                 raise Exception("incorrect pathology alignment")
+            for p0, p1 in zip(dataset.pathologies, self.pathologies):
+                if p0 != p1:
+                    raise Exception("incorrect pathology alignment")
 
         if hasattr(datasets[0], 'labels'):
             self.labels = np.concatenate([d.labels for d in datasets])
@@ -1036,7 +1040,7 @@ class CheX_Dataset(Dataset):
         if labels_to_use:
             label_col = labels_to_use[0]
             label_classes = labels_to_use[1:]
-
+            pdb.set_trace()
             # only keep entries that are in the labels
             idx = self.csv[label_col].isin(label_classes)
             self.csv = self.csv[idx].copy()
@@ -1245,6 +1249,8 @@ class MIMIC_Dataset(Dataset):
             self.idxs_per_label = {}
             for label_i in range(len(label_classes)):
                 self.idxs_per_label[label_i] = np.where(self.labels == label_i)[0]
+            if label_col in self.pathologies:
+                self.labels = np.expand_dims(self.labels, axis=1)
         else:
             # Get our classes.
             healthy = self.csv["No Finding"] == 1
