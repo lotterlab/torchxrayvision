@@ -8,6 +8,45 @@ from os.path import exists, join
 
 import numpy as np
 import torch
+
+from torch.serialization import add_safe_globals, safe_globals
+import torchxrayvision.models as xrv_models
+import torch.nn as nn
+
+# Allowlist a few common globals seen in older checkpoints
+try:
+    add_safe_globals([xrv_models.DenseNet, nn.Sequential, nn.Module, nn.Linear, nn.Conv2d])
+except Exception:
+    pass
+
+def _load_state_dict_robust(path):
+    """
+    Try safest route first (weights_only=True with allowlist).
+    If checkpoint is a full model object, fallback to weights_only=False (trusted).
+    Returns: state_dict
+    """
+    import torch
+    # 1) Try weights_only=True
+    try:
+        obj = torch.load(path, weights_only=True)
+        if isinstance(obj, dict) and all(isinstance(k, str) for k in obj.keys()):
+            return obj
+        if hasattr(obj, "state_dict"):
+            return obj.state_dict()
+    except Exception:
+        pass
+    # 2) Fallback (trusted checkpoints only)
+    obj = torch.load(path, weights_only=False)
+    if isinstance(obj, dict) and all(isinstance(k, str) for k in obj.keys()):
+        return obj
+    if hasattr(obj, "state_dict"):
+        return obj.state_dict()
+    raise TypeError(f"Unsupported checkpoint type at {path}: {type(obj)}")
+
+from torch.serialization import add_safe_globals
+import torchxrayvision.models as xrv_models
+add_safe_globals([xrv_models.DenseNet])
+
 import sklearn.metrics
 from sklearn.metrics import roc_auc_score, accuracy_score
 import sklearn, sklearn.model_selection
@@ -99,7 +138,7 @@ def train(model, dataset, cfg, valid_dataset=None, use_softmax=False):
             [int(w[len(join(cfg.output_dir, f'{dataset_name}-e')):-len('.pt')].split('-')[0]) for w in weights_files])
         start_epoch = epochs.max()
         weights_file = [weights_files[i] for i in np.argwhere(epochs == np.amax(epochs)).flatten()][0]
-        model.load_state_dict(torch.load(weights_file).state_dict())
+        model.load_state_dict(_load_state_dict_robust(weights_file))
 
         with open(join(cfg.output_dir, f'{dataset_name}-metrics.pkl'), 'rb') as f:
             metrics = pickle.load(f)
